@@ -639,7 +639,7 @@ let HUES = hueSet(6);                    // openTrip() 會依實際天數重算
 /* 建置代號。手機上「改了但看起來沒變」十之八九是舊快取，
    在設定裡把這個字串印出來，一眼就知道手上這份是不是新的。
    改版時跟著 sw.js 的 CACHE 一起跳號。 */
-const BUILD = '2026-08-30 · v19';
+const BUILD = '2026-08-30 · v20';
 const VERMILION = '#D62D14';
 /* 已經過去的分頁用的極淺灰。比紙略深一點點，形狀還在但退到背景去。 */
 const PAST_TAB = '#D9D6CE';
@@ -1738,7 +1738,10 @@ function leafHTML(r, i, flags) {
            '<button class="btn" data-take="' + c.id +
            '" style="border-color:#fff;color:#fff;min-height:26px;padding:2px 8px">用對方的</button></span></div>';
   }
-  if (r.late > 0)
+  /* 「遲」只在有釘選時間時才成立。現地重設也會把 late 填起來（它就是遲到量），
+     但那張卡沒有釘選，印出來會變成「比釘選的 --:-- 慢了 26 分」。
+     那一種由下面的「現」自己說明，不要在這裡重複又講錯。 */
+  if (r.late > 0 && r.pin != null && !r.rebased)
     err += '<div class="errata"><b>遲</b><span>比釘選的 ' + min2hm(r.pin) + ' 慢了 ' +
            durTxt(r.late) + '，往後的時刻都已經順延。</span></div>';
   if (r.hours && r.hours.unknown === false && !r.hours.open)
