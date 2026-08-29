@@ -551,24 +551,60 @@ const CFG = {
   key: 'sb_publishable_pjoI0uuRcCn16-GMC_g0xw_9nqoJU-V',
   iters: 250000,
 };
-/* 使用者從 colormind 的原始色票裡挑的：F 組 ＋ G1/G2/G3 ＋ C1。
-   F5 近白（#E4E5E3）已移除——對象牙白紙只有 1.17:1，輪到它的那天
-   DAY 色塊、分頁鐵、時間軸幾乎是空白的，補邊也救不回來。
-   八色＝八天不重複，第九天起循環。順序照使用者給的，沒有重排。 */
-const HUES = [
-  '#9D914A',  // F1 橄欖金
-  '#342F32',  // F2 近黑暖灰
-  '#597A66',  // F3 苔綠
-  '#909D7E',  // F4 鼠尾草
-  '#6A3D4F',  // G1 李
-  '#806386',  // G2 藕紫
-  '#907DCE',  // G3 長春花
-  '#304750',  // C1 板岩藍
+/* 當日色＝colormind 的 L 組（contempt_1963）五色，之間用 OKLab 內插補成十二階：
+   L1 · · L2 · L3 · · L4 · · L5     （· 是內插出來的）
+   在 OKLab 內插而不是 sRGB：sRGB 直接混會經過灰濁的中點，
+   兩個彩度高的色中間會變成髒的土色。
+   使用者 2026-08-29 指定。取色規則見 hueSet()。 */
+const RAMP = [
+  '#7D8A8A',  // 0  L1 灰藍綠
+  '#61635F',  // 1  ·
+  '#463E37',  // 2  ·
+  '#2B1C12',  // 3  L2 深棕近黑
+  '#42341F',  // 4  ·
+  '#5B4D2C',  // 5  L3 橄欖褐
+  '#7B5B3A',  // 6  ·
+  '#9D6A48',  // 7  ·
+  '#BF7857',  // 8  L4 陶土橘
+  '#C39170',  // 9  ·
+  '#C5AA89',  // 10 ·
+  '#C5C3A2',  // 11 L5 淺卡其
 ];
-/* 建置代號。手機上「改了但看起來沒變」十之八九是舊快取，
-   在設定裡把這個字串印出來，一眼就知道手上這份是不是新的。
-   改版時跟著 sw.js 的 CACHE 一起跳號。 */
-const BUILD = '2026-08-29 · v13';
+const ANCHORS = [0, 3, 5, 8, 11];        // L1…L5 在梯上的位置
+/* 候選口袋的分頁色。使用者指定用 F 組的第五色，跟旅程的日子刻意不同系——
+   它不是「某一天」，是還沒排進任何一天的東西。
+   它對紙只有 1.17:1，靠 --accent-edge 的髮絲邊才看得出形狀。 */
+const POCKET_HUE = '#E4E5E3';
+
+/* 這趟旅程要用哪幾階：
+   ─ 五天以內：只用 L1–L5 那五個錨點，頭是 L1、尾一定是 L5。
+   ─ 超過五天：從錨點開始，把內插色一個一個補進「還最寬的那一段」，
+     直到湊滿天數。順序永遠照梯子走，所以整趟看起來是一條漸層。
+   ─ 超過十二天：第十三天起循環（那時最後一天就不保證是 L5 了）。 */
+function hueSet(days) {
+  const n = Math.max(1, days);
+  if (n === 1) return [RAMP[11]];
+  if (n <= 5) {
+    // 錨點裡取 n 個，頭尾固定
+    const out = [];
+    for (let k = 0; k < n; k++) out.push(ANCHORS[Math.round(k * (ANCHORS.length - 1) / (n - 1))]);
+    return out.map(i => RAMP[i]);
+  }
+  const chosen = ANCHORS.slice();
+  while (chosen.length < n && chosen.length < RAMP.length) {
+    /* 找目前最寬的一段，把它的中點補進去。這樣加出來的顏色
+       永遠落在視覺差距最大的地方，相鄰兩天才不會愈補愈像。 */
+    let bestGap = -1, bestAt = -1;
+    for (let k = 1; k < chosen.length; k++) {
+      const gap = chosen[k] - chosen[k - 1];
+      if (gap > bestGap) { bestGap = gap; bestAt = k; }
+    }
+    if (bestGap < 2) break;
+    chosen.splice(bestAt, 0, Math.floor((chosen[bestAt - 1] + chosen[bestAt]) / 2));
+  }
+  return chosen.map(i => RAMP[i]);
+}
+let HUES = hueSet(6);                    // openTrip() 會依實際天數重算
 const VERMILION = '#D62D14';
 /* 已經過去的分頁用的極淺灰。比紙略深一點點，形狀還在但退到背景去。 */
 const PAST_TAB = '#D9D6CE';
@@ -720,14 +756,16 @@ function applyBoard(hue) {
   r.setProperty('--btn-ink', inkOn(btn));
   /* 太淡的當日色（例如近白）在紙上等於沒有形狀，補一道髮絲邊讓方磚與色塊還在。
      不改使用者挑的顏色，只補邊。 */
-  const faint = contrast(hex2rgb(hue), hex2rgb(PAPER)) < 1.6;
+  /* 門檻從 1.6 放寬到 2.2：梯子尾端（淺卡其那幾階）與口袋的近白都落在
+     1.6–2.2 之間，形狀一樣讀不出來，一樣要補邊。 */
+  const faint = contrast(hex2rgb(hue), hex2rgb(PAPER)) < 2.2;
   r.setProperty('--accent-edge', faint ? 'rgba(27,26,22,.45)' : 'transparent');
   /* 卡片內的規線要跟字色同一邊：白字配白線、黑字配黑線，否則會消失或太搶 */
   r.setProperty('--accent-rule',
     inkOn(hue) === '#FFFFFF' ? 'rgba(255,255,255,.30)' : 'rgba(0,0,0,.22)');
   const tc = $('meta[name=theme-color]'); if (tc) tc.setAttribute('content', '#FBF6EA');
 }
-const hueOf = i => HUES[((i % HUES.length) + HUES.length) % HUES.length];
+const hueOf = i => (i < 0 ? POCKET_HUE : HUES[((i % HUES.length) + HUES.length) % HUES.length]);
 </script>
 
 <script>
@@ -1505,8 +1543,11 @@ const nowMin = () => { const d = new Date(); return d.getHours() * 60 + d.getMin
 /* ═══ 畫面 ═══════════════════════════════════════════════════ */
 function render() {
   if (!S.trip) return;
+  /* 色階要跟天數綁在一起：改天數的時候整條漸層要重新分配，
+     不然加了一天之後最後一天就不是 L5 了。 */
+  HUES = hueSet(S.trip.days || 1);
   $('#app').classList.toggle('edit', S.edit);
-  applyBoard(S.day < 0 ? hueOf(S.trip.days) : hueOf(S.day));
+  applyBoard(hueOf(S.day));
   renderRail(); renderPlate(); renderSync();
 }
 
@@ -1529,7 +1570,7 @@ function renderRail() {
   }
   /* 候選口袋跟其他分頁同一套規則與色票，用色輪的下一個顏色 */
   h += '<button class="tab cjk' + (S.day === -1 ? ' on' : '') + '" data-day="-1" ' +
-       'style="background:' + hueOf(S.trip.days) + ';color:' + inkOn(hueOf(S.trip.days)) +
+       'style="background:' + POCKET_HUE + ';color:' + inkOn(POCKET_HUE) +
        '" aria-label="候選口袋">待' +
        '<span class="td">' + dayCards(-1).length + '</span></button>';
   r.innerHTML = h;
