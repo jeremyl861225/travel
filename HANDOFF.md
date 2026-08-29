@@ -47,10 +47,16 @@ App 本身功能完整、後端已上線、同步實測過。剩下的是視覺�
    （對象牙白紙只有 1.17:1，DAY 色塊、分頁鐵、時間軸都幾乎看不見，補邊救不回來）。
    現在是八色，八天不重複。
 2. **底色**：暖象牙白 `#FBF6EA` 已套用，當日色改當強調色。
-3. **字體**：標題與站名走 `HelveticaNeue-CondensedBold` ＋ 中文 `Songti TC`；
-   內文走 `PingFang TC`；數字與英文走 `Avenir Next` ＋ `tabular-nums`。
-   全部字重上限 600——蘋方沒有 700，寫 700 會被 iOS 演算法假造粗體，
-   那才是使用者說「字體太醜」的真正原因。
+3. **字體（2026-08-29 定案）**：標題與站名走 `HelveticaNeue-CondensedBold` ＋
+   中文 **`Hiragino Mincho ProN`**；內文走 `PingFang TC`；數字與英文走
+   `Avenir Next` ＋ `tabular-nums`。全部字重上限 600——蘋方沒有 700，
+   寫 700 會被 iOS 演算法假造粗體，那才是他說「字體太醜」的真正原因。
+
+   **`Songti TC` 不要加回來。** 那是 macOS 才有的字，iOS 沒有；寫進去會安靜地
+   掉回蘋方，而 computed `font-family` 只是把堆疊原樣回讀、證明不了什麼。
+   實機探測（canvas alpha 雜湊，`measureText` 對中文無效）確認 iOS 只有
+   `Hiragino Mincho ProN`、`Heiti TC`、`PingFang TC` 三支。三案的對照頁做成 Artifact
+   給他挑過，他選了明體，接受純中文會出現日式字形。
 
 ## 還沒做的收尾工作
 
@@ -259,3 +265,36 @@ Google 的景點照片要另外計費；維基是免費、免 key、CORS 開放�
 在啟動動畫還沒結束時會回報偏小的值，量到就定住，頁底永遠少一截。
 瀏覽器模式維持用 `visualViewport`（`innerHeight` 含被工具列蓋住的那一段）。
 啟動後 0/120/400/1000ms 各重量一次，並監聽 `pageshow`。
+
+---
+
+## 2026-08-29 下半場：Google API 全開之後
+
+`GOOGLE_MAPS_API_KEY` 已設好，六項功能全部做完並上線（`v12`）。
+
+1. **排順路改用真實路網矩陣**（`matrix` op → `computeRouteMatrix`）。成本從
+   「直線距離×繞路係數」換成實際車程。D5 實測收工 20:16 → 19:04、233 → 173 km。
+2. **營業時間是約束不是事後檢查**：`scoreOrder()` 把時刻推一遍數「幾站撲空」，
+   排序準則是撲空站數 → 收工時間 → 純移動時間。用收工時間當第二順位，
+   是因為「為了等開門枯等」跟「多開二十分鐘」代價一樣。
+   舊的 `twoOpt` / `pathLen` / `simulate` 已刪。
+3. **新增改成打字跳候選**（Places Autocomplete，整段共用一個 sessionToken）。
+4. **口袋長出「找附近」**（Nearby Search）。刻意不自動搜——那是 Enterprise 級。
+5. **日首顯示公休與撲空總覽**。
+6. **Google 排程器**（Route Optimization）程式寫完了，**卡在認證**：
+   那支不收 API key，要服務帳戶。步驟在 `docs/GOOGLE-MAPS-SETUP.md` 第八節。
+
+另外：開車路程改成帶出發時刻（`TRAFFIC_AWARE`），時區用地點自己的
+`utcOffsetMinutes`（手機在台灣是 +8、日本 +9，用手機時區會整整差一小時）。
+
+### 頁尾空白：繞了四輪的教訓
+
+**唯一的成因是 `viewport-fit=cover`。** 有它，iOS 把網頁視窗鋪滿螢幕、再用
+`env(safe-area-inset-bottom)` 回報 34px 要你自己讓開 home indicator——你讓出來的
+就是那條空白。拿掉它（並把 status-bar-style 改回 `default`），`env()` 一律回 0，
+iOS 改成把視窗縮到 home indicator 上面，那條由系統管。Clinical-Tools 就是這樣。
+
+中途我把 `screen.height − innerHeight = 62` 誤判成「下方缺口」去補，
+那 62 其實是**上方狀態列**的內縮，結果把空白撐大到 85pt。
+**診斷要量幾何**（`dock.getBoundingClientRect().bottom` 對 `innerHeight`），
+不要看視窗數字。設定頁最下面那兩行診斷等他確認空白消失後就可以拆掉。
