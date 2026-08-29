@@ -71,11 +71,12 @@ App 本身功能完整、後端已上線、同步實測過。剩下的是視覺�
 
 ## 還沒做的收尾工作
 
-- [ ] 建 GitHub repo 與 GitHub Pages 部署
+- [x] 建 GitHub repo 與 GitHub Pages 部署（已完成：github.com/jeremyl861225/travel）
 - [ ] 拖曳排序的實機驗證
 - [ ] impeccable 的 finish review（`impeccable-finish-reviewer`）與 DESIGN.md（`impeccable-documenter`）
-- [ ] 清掉測試資料：Supabase 上有一筆代號 `LKUD6TAH` 的「京都五日」測試旅程，
-      裡面是假的京都行程，收工前要刪
+- [ ] 清掉測試資料：Supabase 上有一筆代號 `LKUD6TAH`、密碼 `travel2026` 的
+      「京都五日」測試旅程（假資料）。**暫停期間刻意留著**，讓使用者可以在 iPhone 上
+      開 https://jeremyl861225.github.io/travel/ 直接輸入這組來試用。定案後要刪。
 - [ ] `sw.js` 的 `CACHE_VERSION` 目前是 `travel-v1`，每次改版要記得跳號
 
 ---
