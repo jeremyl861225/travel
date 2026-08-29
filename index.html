@@ -515,7 +515,7 @@ const HUES = [
 /* 建置代號。手機上「改了但看起來沒變」十之八九是舊快取，
    在設定裡把這個字串印出來，一眼就知道手上這份是不是新的。
    改版時跟著 sw.js 的 CACHE 一起跳號。 */
-const BUILD = '2026-08-29 · v5';
+const BUILD = '2026-08-29 · v6';
 const VERMILION = '#D62D14';
 const MARKS = ['nature','heritage','shop','play','food','stay','transit','view','hot','pin'];
 const DEFAULT_CATS = [
@@ -2375,6 +2375,41 @@ function sheetPorting() {
 }
 
 /* ═══ 旅程設定 ═══════════════════════════════════════════════ */
+/* ── 字型探測 ───────────────────────────────────────────────
+   桌機 macOS 有的中文字，iOS 不一定有（Songti TC 就是典型：
+   macOS 有、iOS 沒有）。而 computed style 只會把堆疊原樣回讀，
+   證明不了字型真的被解析到——所以只能用畫的。
+
+   中文不能量寬度：CJK 一律全形，缺字時的替代字面寬度一模一樣，
+   measureText 永遠相等。改成把字畫進 canvas、比 alpha 的雜湊；
+   跟保證存在的後備字畫出來不一樣，才算這支字真的在。 */
+const FONT_PROBE = ['Songti TC','Songti SC','Hiragino Mincho ProN','LiSong Pro',
+  'BiauKai','Kaiti TC','Yuanti TC','Lantinghei TC','Libian TC','Baoli TC',
+  'Weibei TC','Hannotate TC','HanziPen TC','Heiti TC','PingFang TC'];
+function fontHash(family, sample) {
+  const c = document.createElement('canvas');
+  c.width = 220; c.height = 46;
+  const x = c.getContext('2d');
+  x.font = '34px ' + family;
+  x.textBaseline = 'top';
+  x.fillText(sample, 0, 4);
+  const px = x.getImageData(0, 0, c.width, c.height).data;
+  let h = 2166136261;
+  for (let i = 3; i < px.length; i += 4) { h ^= px[i]; h = Math.imul(h, 16777619); }
+  return h >>> 0;
+}
+function fontsPresent() {
+  const sample = '國東北自駕';
+  /* 兩個後備都比一次：只比一個的話，萬一候選字剛好就是那個後備，
+     會被判成「不存在」。 */
+  const base = [fontHash('monospace', sample), fontHash('serif', sample)];
+  return FONT_PROBE.filter(f => {
+    const a = fontHash('"' + f + '", monospace', sample);
+    const b = fontHash('"' + f + '", serif', sample);
+    return a !== base[0] || b !== base[1];
+  });
+}
+
 function sheetTrip() {
   const t = S.trip;
   const cats = catsOf();
@@ -2436,7 +2471,9 @@ function sheetTrip() {
     ' / sab ' + getComputedStyle(document.documentElement)
       .getPropertyValue('--sab').trim() +
     ' / scr ' + window.screen.height + ' / cli ' +
-    document.documentElement.clientHeight + ' / dpr ' + window.devicePixelRatio + '</p>',
+    document.documentElement.clientHeight + ' / dpr ' + window.devicePixelRatio + '</p>' +
+    '<p class="hint" style="text-align:center;opacity:.7">字型：' +
+    (fontsPresent().join('、') || '（都沒有）') + '</p>',
     () => {
       let m = t.defaultMode || 'drive';
       $$('#tModes [data-m]').forEach(n => n.onclick = () => {
