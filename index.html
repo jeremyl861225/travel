@@ -1486,6 +1486,7 @@ function renderPlate() {
         dayStrip(sched, d) +
         '<div class="startrow">' +
           '<button class="btn fill" id="btnStart">出發 ' + dayStart(d) + '</button>' +
+          (S.edit ? '<button class="btn fill" id="btnPlan">排順路</button>' : '') +
           (dayUrl ? '<a class="btn fill" href="' + dayUrl + '" target="_blank" rel="noopener">Map ↗</a>' : '') +
         '</div>' +
       '</div></div></div>';
@@ -1531,6 +1532,154 @@ function renderPlate() {
 
   plate.innerHTML = h;
   bindPlate();
+}
+
+/* ═══ 自動排順路 ═══════════════════════════════════════════
+   這是旅行推銷員問題。直接對整天做 TSP 會產生垃圾結果，因為行程不是
+   一組可以任意交換的點——所以這裡有四個「不准動」的錨點：
+     1. 當天第一站（通常是住宿或前一天的終點，動了整天就錯了）
+     2. 所有釘選時間的卡（餐廳訂位、預約制景點，順序由時間決定）
+     3. 沒有座標的卡（算不出距離，不能假裝它可以移動）
+     4. 當天最後一站（通常是住宿）
+   只有錨點與錨點之間那幾段自由的卡會被重排。
+   成本用直線距離，不是實際路程——沒有 API key 時無法取得所有點對的
+   真實車程（8 站就是 56 組），而且那要另外計費。直線距離對「決定順序」
+   夠用，但山路、跨河、單行道會失準，所以結果一定要先給人看過再套用。
+   **不考慮營業時間與停留時間**，重排後可能把某站排到它沒開門的時段。 */
+function haversine(a, b) {
+  const R = 6371000, rad = x => x * Math.PI / 180;
+  const dLat = rad(b[0] - a[0]), dLng = rad(b[1] - a[1]);
+  const h = Math.sin(dLat/2) ** 2 +
+            Math.cos(rad(a[0])) * Math.cos(rad(b[0])) * Math.sin(dLng/2) ** 2;
+  return 2 * R * Math.asin(Math.sqrt(h));
+}
+function pathLen(order, pt) {
+  let t = 0;
+  for (let i = 1; i < order.length; i++) {
+    const a = pt[order[i-1]], b = pt[order[i]];
+    if (a && b) t += haversine(a, b);
+  }
+  return t;
+}
+/* 2-opt：反覆把交叉的兩段路對調，直到沒有改善。頭尾是錨點，不參與交換。 */
+function twoOpt(order, pt) {
+  let best = order.slice(), improved = true, guard = 0;
+  while (improved && guard++ < 60) {
+    improved = false;
+    for (let i = 1; i < best.length - 2; i++) {
+      for (let k = i + 1; k < best.length - 1; k++) {
+        const a = pt[best[i-1]], b = pt[best[i]], c = pt[best[k]], e = pt[best[k+1]];
+        if (!a || !b || !c || !e) continue;
+        if (haversine(a,b) + haversine(c,e) > haversine(a,c) + haversine(b,e) + 0.5) {
+          best = best.slice(0, i).concat(best.slice(i, k+1).reverse(), best.slice(k+1));
+          improved = true;
+        }
+      }
+    }
+  }
+  return best;
+}
+function planDay(d) {
+  const list = dayCards(d);
+  if (list.length < 4) return null;                  // 三站以內沒有重排的餘地
+  const pt = list.map(c => {
+    const p = c.data.place;
+    return (p && p.lat != null && p.lng != null) ? [p.lat, p.lng] : null;
+  });
+  const anchor = list.map((c, i) =>
+    i === 0 || i === list.length - 1 || !!c.data.pinTime || !pt[i]);
+  const before = list.map((_, i) => i);
+
+  /* 錨點把整天切成幾段，每一段各自重排，段的頭尾不動。 */
+  const after = [];
+  let seg = [0];
+  for (let i = 1; i < list.length; i++) {
+    seg.push(i);
+    if (anchor[i]) {
+      const inner = seg.slice(1, -1);
+      if (inner.length >= 2) {
+        // 先用最近鄰排一輪當起點，再 2-opt 收斂
+        const remain = inner.slice();
+        const nn = [seg[0]];
+        while (remain.length) {
+          const last = pt[nn[nn.length - 1]];
+          let bi = 0, bd = Infinity;
+          remain.forEach((x, xi) => {
+            const dd = (last && pt[x]) ? haversine(last, pt[x]) : Infinity;
+            if (dd < bd) { bd = dd; bi = xi; }
+          });
+          nn.push(remain.splice(bi, 1)[0]);
+        }
+        nn.push(seg[seg.length - 1]);
+        const opt = twoOpt(nn, pt);
+        after.push(...(after.length ? opt.slice(1) : opt));
+      } else {
+        after.push(...(after.length ? seg.slice(1) : seg));
+      }
+      seg = [i];
+    }
+  }
+  const changed = after.some((v, i) => v !== before[i]);
+  return { list, pt, before, after, anchor,
+           lenBefore: pathLen(before, pt), lenAfter: pathLen(after, pt),
+           movable: anchor.filter(a => !a).length, changed };
+}
+
+function sheetPlan() {
+  const d = S.day;
+  const r = planDay(d);
+  if (!r) return toast('這一天不到四站，沒有重排的餘地');
+  const noCoord = r.anchor.filter((a, i) => a && !r.pt[i]).length;
+  const rows = r.after.map((idx, k) => {
+    const c = r.list[idx];
+    const moved = idx !== r.before[k];
+    return '<div class="todo"><span class="t" style="' + (moved ? 'font-weight:600' : 'opacity:.65') +
+      '">' + (k + 1) + '. ' + esc(c.data.name || '未命名') +
+      (r.anchor[idx] ? '　<span class="lab" style="letter-spacing:.06em">固定</span>' : '') +
+      '</span></div>';
+  }).join('');
+  const saved = r.lenBefore - r.lenAfter;
+  openSheet('排順路',
+    '<p class="prose" style="margin-bottom:10px">' +
+      (r.changed
+        ? '把可以動的那幾站重排之後，直線總距離從 <b>' + dist(Math.round(r.lenBefore)) +
+          '</b> 降到 <b>' + dist(Math.round(r.lenAfter)) + '</b>，少繞 <b>' +
+          dist(Math.round(saved)) + '</b>。'
+        : '算過了，目前的順序已經是最順的，沒有東西要改。') +
+    '</p>' +
+    '<div class="fld stack"><span class="lab">重排後的順序</span><div>' + rows + '</div></div>' +
+    '<p class="hint" style="margin-bottom:12px">' +
+      '「固定」的不會動：當天第一站與最後一站、所有釘選時間的卡' +
+      (noCoord ? '、以及 ' + noCoord + ' 張沒有座標的卡' : '') + '。<br>' +
+      '成本用的是<b>直線距離</b>，不是實際車程——山路、跨河、單行道會失準。<br>' +
+      '<b>不考慮營業時間</b>，重排後可能把某一站排到它沒開門的時段，套用後請看一下紅色提示。<br>' +
+      '順序變動的路段，原本的路程時間會被清掉。' +
+    '</p>' +
+    (r.changed ? '<button class="btn fill wide" id="planGo">套用這個順序</button>' : ''),
+    () => {
+      const go = $('#planGo');
+      if (go) go.onclick = async () => {
+        /* 只有仍然相鄰的那一對才留得住既有的路程時間，其餘清掉——
+           留著錯的數字比沒有數字更糟。 */
+        const keep = new Set();
+        for (let k = 0; k < r.after.length - 1; k++) {
+          const a = r.after[k], b = r.after[k + 1];
+          if (b === a + 1) keep.add(a);
+        }
+        let key = '';
+        for (let k = 0; k < r.after.length; k++) {
+          const c = r.list[r.after[k]];
+          key = keyBetween(key, '');
+          c.orderKey = key;
+          if (!keep.has(r.after[k])) c.data.leg = c.data.leg ? { mode: c.data.leg.mode } : null;
+          await touch(c);
+        }
+        closeSheet();
+        if (S.trip.autoRoute) ensureLegs(d, true);
+        render();
+        toast('已重排，少繞 ' + dist(Math.round(saved)));
+      };
+    });
 }
 
 /* 一天的形狀：橫軸是時間，每一站畫成一段膠囊，站與站之間的空白就是
@@ -1601,6 +1750,7 @@ function bindPlate() {
   const p = $('#plate');
   const home = $('#btnHome'); if (home) home.onclick = leaveTrip;
   const st = $('#btnStart'); if (st) st.onclick = sheetDayStart;
+  const pl = $('#btnPlan'); if (pl) pl.onclick = sheetPlan;
   $$('[data-open]', p).forEach(n => n.onclick = () => {
     S.open = (S.open === n.dataset.open) ? null : n.dataset.open;
     renderPlate();

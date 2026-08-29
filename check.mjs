@@ -105,7 +105,18 @@ for (const x of src.matchAll(/\bfunction\s*\*?\s*([A-Za-z_$][\w$]*)?\s*\(([^()]*
 }
 for (const x of src.matchAll(/\(([^()]*)\)\s*=>/g)) x[1].split(',').forEach(p => add(p.split('=')[0]));
 for (const x of src.matchAll(/([A-Za-z_$][\w$]*)\s*=>/g)) add(x[1]);
-for (const x of src.matchAll(/\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)/g)) add(x[1]);
+/* 一句宣告多個變數（const a = 1, b = 2）時，只抓第一個會漏掉後面的，
+   造成「呼叫了但找不到定義」的假警報。整段切開逐一登記。 */
+for (const x of src.matchAll(/\b(?:const|let|var)\s+([^;\n]+)/g)) {
+  let depth = 0, cur = '';
+  for (const ch of x[1]) {
+    if ('([{'.includes(ch)) depth++;
+    else if (')]}'.includes(ch)) depth--;
+    if (ch === ',' && depth === 0) { add(cur.split('=')[0]); cur = ''; }
+    else cur += ch;
+  }
+  add(cur.split('=')[0]);
+}
 for (const x of src.matchAll(/\b(?:const|let|var)\s*[[{]([^}\]]+)[}\]]/g))
   x[1].split(',').forEach(p => add(p.split(':').pop().split('=')[0]));
 for (const x of src.matchAll(/\bcatch\s*\(([^)]*)\)/g)) add(x[1]);
