@@ -639,7 +639,7 @@ let HUES = hueSet(6);                    // openTrip() 會依實際天數重算
 /* 建置代號。手機上「改了但看起來沒變」十之八九是舊快取，
    在設定裡把這個字串印出來，一眼就知道手上這份是不是新的。
    改版時跟著 sw.js 的 CACHE 一起跳號。 */
-const BUILD = '2026-08-30 · v20';
+const BUILD = '2026-08-30 · v21';
 const VERMILION = '#D62D14';
 /* 已經過去的分頁用的極淺灰。比紙略深一點點，形狀還在但退到背景去。 */
 const PAST_TAB = '#D9D6CE';
@@ -1314,9 +1314,12 @@ async function loadWeather(d) {
   const c = dayCards(d).find(x => x.data.place && x.data.place.lat != null);
   if (!c) { S.weather[d] = null; return; }
   const date = dayDate(d);
-  /* 預報只到 16 天，更遠的日期回來會是空的——那就不顯示，不要編。 */
+  /* 預報只到 16 天，更遠的日期回來會是空的——那就不顯示，不要編。
+     但「什麼都不顯示」看起來像壞掉，所以記下「還太早」與哪天開始看得到，
+     日首會直接寫出來。 */
   const diff = (new Date(date + 'T12:00:00') - new Date(todayISO() + 'T12:00:00')) / 86400000;
-  if (diff < 0 || diff > 15) { S.weather[d] = null; return; }
+  if (diff > 15) { S.weather[d] = { tooFar: true, from: dateAdd(date, -15) }; return; }
+  if (diff < 0) { S.weather[d] = null; return; }
   S.weather[d] = null;
   try {
     /* 一天一筆最高最低溫，對「下午三點在吾妻小富士會不會下雨」沒有幫助。
@@ -1785,6 +1788,12 @@ function leafHTML(r, i, flags) {
 function detailHTML(c, r) {
   const d = c.data, p = d.place || {};
   let h = '<div class="detail">';
+  /* 「我在這裡」擺在展開後的第一塊。它原本在最底下的動作列，
+     要滑過介紹、營業時間、地址、連結才看得到——那是開車時要按的東西，
+     埋在那個位置等於沒有。只有今天那一天才出現。 */
+  if (c.dayIndex >= 0 && c.dayIndex === todayIndex())
+    h += '<div class="blk full"><button class="btn fill wide" data-here="' + c.id + '">' +
+         '我在這裡（把時刻改成現在）</button></div>';
   if (d.note)
     h += '<div class="blk full"><div class="prose">' +
          esc(d.note).replace(/\n/g, '<br>') + '</div></div>';
@@ -1852,8 +1861,6 @@ function detailHTML(c, r) {
     '<button class="btn" data-edit="' + c.id + '">編輯</button>' +
     /* 旅途中用的：報一次「我現在人在這裡」，剩下的整天當場重推。
        只有今天那一天才給——對其他天按它沒有意義。 */
-    (c.dayIndex >= 0 && c.dayIndex === todayIndex()
-      ? '<button class="btn" data-here="' + c.id + '">我在這裡</button>' : '') +
     (c.dayIndex < 0 ? '<button class="btn" data-bestday="' + c.id + '">排進哪一天？</button>' : '') +
     '<a class="btn" href="' + gmPlace(c) + '" target="_blank" rel="noopener">' + mark('pin','sm') + ' 地圖</a>' +
     (!(d.place && d.place.placeId) && gmCoords(c)
@@ -1896,7 +1903,10 @@ function renderPlate() {
         '<div class="ddate"><span class="num">' + dp.m + '</span> 月 <span class="num">' +
           dp.d + '</span> 日<span style="font-size:15px;color:var(--ink2)"> 週' +
           WEEK[dp.w] + '</span></div>' +
-        (w ? '<div class="dsub">' + (WCODE[w.code] || '') + ' ' + w.tmin + '–' + w.tmax + '°C</div>' : '') +
+        (w && w.tooFar
+          ? '<div class="dsub">天氣　' + (() => { const q = dateParts(w.from);
+              return q.m + '/' + q.d; })() + ' 起看得到（預報只到 16 天）</div>'
+          : w ? '<div class="dsub">' + (WCODE[w.code] || '') + ' ' + w.tmin + '–' + w.tmax + '°C</div>' : '') +
         /* 公休與撲空要在日首就看得到。點進每一張卡才發現「今天週一休館」
            已經太晚了——那是要換天的決定，不是換時間的決定。 */
         /* 今天：直接講「現在應該在哪」。行程表最沒用的時刻，
