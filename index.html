@@ -547,7 +547,7 @@ const HUES = [
 /* 建置代號。手機上「改了但看起來沒變」十之八九是舊快取，
    在設定裡把這個字串印出來，一眼就知道手上這份是不是新的。
    改版時跟著 sw.js 的 CACHE 一起跳號。 */
-const BUILD = '2026-08-29 · v9';
+const BUILD = '2026-08-29 · v10';
 const VERMILION = '#D62D14';
 /* 已經過去的分頁用的極淺灰。比紙略深一點點，形狀還在但退到背景去。 */
 const PAST_TAB = '#D9D6CE';
@@ -2018,6 +2018,13 @@ async function optimizeDay(d) {
     .sort((a, b) => String(a.startTime || '').localeCompare(String(b.startTime || '')))
     .map(v => mid[v.shipmentIndex || 0])
     .filter(Boolean);
+  /* 解不進去的貨件不會出現在 visits 裡。少了幾張就照舊套用的話，
+     那幾張會留在舊的 orderKey 上，位置變得無法預測——寧可整個不給套。 */
+  if (seq.length !== mid.length) {
+    const got = new Set(seq.map(x => x.card.id));
+    const lost = mid.filter(x => !got.has(x.card.id)).map(x => x.card.data.name || '未命名');
+    throw Object.assign(new Error('unassigned'), { code: 'UNASSIGNED', lost });
+  }
   /* 沒有座標的卡沒進模型，把它們補回原來的相對位置（接在最後一站之前），
      不然套用順序時會整批消失。 */
   const order = [0]
@@ -2168,6 +2175,8 @@ async function runGoogleOptimizer(d) {
       NO_MOVABLE: '可以動的站不到兩個。',
       PAST_DATE: '這一天已經過了，Route Optimization 不收過去的時間。',
       NO_SOLUTION: '在營業時間與釘選的限制下找不到可行解——通常是某一站的時間窗互相打架。',
+      UNASSIGNED: '有站排不進去（時間窗打架），整個順序就不給套用了：' +
+                  (e.lost || []).join('、'),
     }[e.code] || ('失敗：' + (e.code || e.message));
     out.innerHTML = '<p class="hint" style="margin-top:10px;color:var(--vermilion)">' + esc(msg) + '</p>';
   } finally {
