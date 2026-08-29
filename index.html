@@ -177,6 +177,9 @@ a{color:inherit}
   text-decoration:none;box-shadow:0 1px 3px rgba(0,0,0,.10);
 }
 .leg.miss{color:var(--ink3)}
+/* 釘選造成的等待＝行程裡真的有空的時間，寫在板色上，跟紙上的路程分開 */
+.gap{font-family:var(--mono);font-size:10.5px;letter-spacing:.04em;color:var(--board-ink);
+  opacity:.85;white-space:nowrap}
 .leg b{font-weight:700;font-size:11.5px}
 .legdir{
   background:var(--leaf);border:1px solid var(--rule2);color:var(--ink2);
@@ -1456,11 +1459,13 @@ function renderPlate() {
       const c = r.card, nx = sched[i + 1].card;
       const leg = c.data.leg || {};
       const m = modeBy(leg.mode || S.trip.defaultMode);
+      const gap = sched[i + 1].wait;
       h += '<div class="hinge">' +
         '<button class="leg' + (leg.min == null ? ' miss' : '') + '" data-leg="' + c.id + '">' +
           mark(m.mark, 'sm') + (leg.min == null ? '<span>路程未知</span>' :
             '<b>' + leg.min + ' 分</b>' + (leg.meters ? '<span>' + dist(leg.meters) + '</span>' : '')) +
         '</button>' +
+        (gap > 20 ? '<span class="gap">空檔 ' + durTxt(gap) + '</span>' : '') +
         '<a class="legdir" href="' + gmDir(c, nx, leg.mode || S.trip.defaultMode) +
           '" target="_blank" rel="noopener">路線 ↗</a>' +
       '</div>';
@@ -1850,6 +1855,104 @@ async function dupToNextDay(c) {
 
 <script>
 'use strict';
+/* ═══ 匯出與匯入 ═══════════════════════════════════════════════
+   格式故意做得可讀可手改：整份是明文 JSON，跟雲端上的密文是兩回事。
+   匯出的檔案裡有完整行程內容，**不要隨手丟到雲端硬碟或聊天室**。 */
+function exportTripJSON() {
+  return {
+    format: 'travel-trip@1',
+    exportedAt: new Date().toISOString(),
+    trip: tripMeta(),
+    cards: S.cards.filter(c => !c.deleted)
+      .sort((a, b) => (a.dayIndex - b.dayIndex) || (a.orderKey < b.orderKey ? -1 : 1))
+      .map(c => ({ dayIndex: c.dayIndex, orderKey: c.orderKey, data: c.data })),
+  };
+}
+async function importTripJSON(obj) {
+  if (!obj || obj.format !== 'travel-trip@1' || !Array.isArray(obj.cards))
+    throw new Error('這不是 Travel 的匯入檔（缺少 format: travel-trip@1）');
+  /* 舊卡標記成刪除而不是真刪：不留墓碑的話，其他人的裝置同步回來會把它們復活。 */
+  for (const c of S.cards.filter(x => !x.deleted)) {
+    c.deleted = true; c.dirty = true; await dbPut('cards', c);
+  }
+  if (obj.trip) {
+    const t = obj.trip;
+    if (t.name) S.trip.name = t.name;
+    if (t.startDate) S.trip.startDate = t.startDate;
+    if (t.days) S.trip.days = clamp(t.days, 1, 60);
+    if (t.defaultStart) S.trip.defaultStart = t.defaultStart;
+    if (t.dayStarts) S.trip.dayStarts = t.dayStarts;
+    if (t.defaultMode) S.trip.defaultMode = t.defaultMode;
+    if (t.autoRoute != null) S.trip.autoRoute = t.autoRoute;
+    if (Array.isArray(t.cats) && t.cats.length) S.trip.cats = t.cats;
+    await touchMeta();
+  }
+  const blank = { name:'', catId:'', stayMin:60, pinTime:'', note:'',
+                  links:[], todos:[], images:[], place:null, leg:null };
+  let n = 0, lastKey = '';
+  for (const rec of obj.cards) {
+    lastKey = rec.orderKey || keyAfter(lastKey);
+    const c = {
+      id: uuid(), trip: S.trip.code,
+      dayIndex: rec.dayIndex == null ? -1 : rec.dayIndex,
+      orderKey: lastKey,
+      data: Object.assign({}, blank, rec.data || {}),
+      rev: 0, deleted: false, dirty: true, conflict: null,
+      updatedBy: S.trip.nick || '', updatedAt: new Date().toISOString(),
+    };
+    S.cards.push(c); await dbPut('cards', c); n++;
+  }
+  S.day = 0; S.open = null;
+  scheduleSync();
+  return n;
+}
+function sheetPorting() {
+  openSheet('匯出與匯入',
+    '<p class="prose" style="margin-bottom:12px">匯出的是<b>明文</b> JSON，' +
+    '整份行程都在裡面。它是備份，也是把別處的行程搬進來的入口。</p>' +
+    '<div class="row" style="margin-bottom:16px">' +
+    '<button class="btn fill" id="pxCopy">複製到剪貼簿</button>' +
+    '<button class="btn" id="pxFile">下載檔案</button></div>' +
+    '<div class="fld stack"><span class="lab">貼上匯入檔</span>' +
+    '<textarea class="inp" id="pxIn" style="min-height:110px;font-family:var(--mono);' +
+    'font-size:12px" placeholder=\'{"format":"travel-trip@1", …}\'></textarea></div>' +
+    '<div class="row" style="margin-bottom:12px">' +
+    '<input type="file" id="pxPick" accept=".json,application/json" style="font-size:13px"></div>' +
+    '<button class="btn wide" id="pxGo" style="color:var(--vermilion);border-color:var(--vermilion)">' +
+    '匯入並取代目前的行程</button>' +
+    '<p class="hint">匯入會把這趟旅程現有的卡片全部刪掉再換上新的，' +
+    '而且會同步給其他人。要保留舊的就先按上面的匯出。</p>',
+    () => {
+      const json = () => JSON.stringify(exportTripJSON(), null, 1);
+      $('#pxCopy').onclick = () => navigator.clipboard.writeText(json())
+        .then(() => toast('已複製，可以貼到別的地方'), () => toast('複製失敗，改用下載'));
+      $('#pxFile').onclick = () => {
+        const b = new Blob([json()], { type:'application/json' });
+        const a = el('a'); a.href = URL.createObjectURL(b);
+        a.download = (S.trip.name || 'travel') + '.json';
+        document.body.appendChild(a); a.click(); a.remove();
+        setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      };
+      $('#pxPick').onchange = e => {
+        const f = e.target.files && e.target.files[0]; if (!f) return;
+        const r = new FileReader();
+        r.onload = () => { $('#pxIn').value = r.result; toast('檔案已讀入，按下面的匯入'); };
+        r.readAsText(f);
+      };
+      $('#pxGo').onclick = async () => {
+        let obj;
+        try { obj = JSON.parse($('#pxIn').value); }
+        catch (e) { return toast('JSON 解析失敗：' + String(e.message).slice(0, 60)); }
+        if (!confirm('這會刪掉「' + S.trip.name + '」現有的所有卡片，確定？')) return;
+        try {
+          const n = await importTripJSON(obj);
+          closeSheet(); render();
+          toast('匯入了 ' + n + ' 張卡');
+        } catch (e) { toast(String(e.message || e).slice(0, 80)); }
+      };
+    });
+}
+
 /* ═══ 旅程設定 ═══════════════════════════════════════════════ */
 function sheetTrip() {
   const t = S.trip;
@@ -1893,7 +1996,8 @@ function sheetTrip() {
     '<button class="btn" id="tCopy">複製代碼</button></div>' +
     '<p class="hint">密碼不會顯示在這裡——它是解密金鑰，我們沒有存明文。</p></div>' +
 
-    '<button class="btn fill wide" id="tSave" style="margin-top:16px">儲存</button>' +
+    '<button class="btn wide" id="tPort" style="margin-top:14px">匯出 / 匯入 JSON</button>' +
+    '<button class="btn fill wide" id="tSave" style="margin-top:8px">儲存</button>' +
     '<button class="btn wide" id="tForget" style="margin-top:8px;color:var(--vermilion);' +
     'border-color:var(--vermilion)">從這台裝置移除</button>' +
     '<p class="hint">移除只影響這支手機，雲端與其他人的資料不動；' +
@@ -1913,6 +2017,7 @@ function sheetTrip() {
         t.cats = catsOf().concat([{ id:'c' + Date.now().toString(36), name, mark:$('#tNewMark').value }]);
         await touchMeta(); closeSheet(); sheetTrip();
       };
+      $('#tPort').onclick = () => { closeSheet(); sheetPorting(); };
       $('#tCopy').onclick = () => {
         navigator.clipboard.writeText(t.code).then(() => toast('代碼已複製'), () => toast('複製失敗'));
       };
