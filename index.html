@@ -67,7 +67,7 @@
   --step:90ms;              /* 唯一的動作長度 */
   --rail:44px;              /* 書口分頁鐵 */
   --bind:10px;              /* 左緣留白 */
-  --dock:60px;
+  --dock:52px;
 }
 @media (prefers-reduced-motion: reduce){ :root{ --step:1ms } }
 
@@ -224,14 +224,14 @@ a{color:inherit}
 .headbody{padding:9px 12px 11px}
 .ddate{font-size:15.5px;font-weight:600;letter-spacing:-.015em;line-height:1.2;font-family:var(--display)}
 .dsub{font-family:var(--mono);font-size:10.5px;color:var(--ink2);margin-top:3px;letter-spacing:.02em;line-height:1.42}
-.startrow{display:flex;align-items:center;gap:7px;margin-top:10px;flex-wrap:wrap}
-.startrow .btn{min-height:31px;padding:5px 10px;font-size:11.5px}
+.startrow{display:flex;align-items:center;gap:7px;margin-top:9px;flex-wrap:nowrap}
+.startrow .btn{min-height:26px;padding:3px 11px 4px;font-size:11px;flex:0 0 auto}
 
 /* ── 通用小零件 ─────────────────────────────────────────── */
-.lab{font-family:var(--mono);font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink3)}
+.lab{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink3)}
 .btn{
   display:inline-flex;align-items:center;justify-content:center;gap:6px;
-  min-height:34px;padding:6px 13px;border:1px solid var(--rule);border-radius:var(--r2);
+  min-height:31px;padding:5px 12px;border:1px solid var(--rule);border-radius:var(--r2);
   font-family:var(--mono);font-size:11.5px;letter-spacing:.05em;background:transparent;
   text-decoration:none;
 }
@@ -245,14 +245,14 @@ a{color:inherit}
 .btn[disabled]{opacity:.4}
 .inp{
   width:100%;background:transparent;border:1px solid var(--rule);border-radius:var(--r2);
-  padding:9px 12px;font-family:var(--mono);font-size:14px;letter-spacing:.02em;
+  padding:7px 10px;font-family:var(--mono);font-size:13.5px;letter-spacing:.02em;
 }
 /* 焦點是邊框變色加粗，不是 outline、不是 glow。用當日色的暗版，
    因為鉻黃那種亮色當 1px 線在紙上只有 1.5:1，等於看不見。 */
 .inp:focus{outline:none;border-color:var(--accent-line);
   box-shadow:inset 0 0 0 1px var(--accent-line)}
 textarea.inp{font-family:var(--serif);font-size:15px;line-height:1.65;letter-spacing:0;min-height:120px;resize:vertical}
-.hint{font-family:var(--mono);font-size:11px;color:var(--ink3);line-height:1.5;margin-top:5px}
+.hint{font-family:var(--mono);font-size:10px;color:var(--ink3);line-height:1.55;margin-top:5px}
 
 /* ── 底部操作列（拇指可及） ─────────────────────────────── */
 .dock{
@@ -263,7 +263,7 @@ textarea.inp{font-family:var(--serif);font-size:15px;line-height:1.65;letter-spa
   background:var(--leaf);border-top:1px solid var(--rule2);
   border-radius:0;border-top:1px solid var(--rule1);
 }
-.dock .btn{flex:0 0 auto;min-height:42px}
+.dock .btn{flex:0 0 auto;min-height:32px;padding:4px 12px;font-size:11.5px}
 .dock .grow{flex:1 1 auto}
 .sync{font-family:var(--mono);font-size:10.5px;letter-spacing:.04em;color:var(--ink3);text-align:right;line-height:1.3}
 .sync.err{color:var(--vermilion)}
@@ -289,10 +289,10 @@ textarea.inp{font-family:var(--serif);font-size:15px;line-height:1.65;letter-spa
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sheetbody{padding:14px}
 /* 手冊的四欄格線在窄螢幕收成一欄，標籤吊在邊欄 */
-.fld{display:grid;grid-template-columns:76px 1fr;gap:10px;align-items:start;margin-bottom:13px}
+.fld{display:grid;grid-template-columns:70px 1fr;gap:9px;align-items:start;margin-bottom:10px}
 .fld > .lab{padding-top:10px;text-align:right}
 .fld.stack{grid-template-columns:1fr}
-.fld.stack > .lab{text-align:left;padding-top:0;margin-bottom:5px}
+.fld.stack > .lab{text-align:left;padding-top:0;margin-bottom:4px}
 .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 /* 拉丁的 1.5 對繁中太緊，內文要 1.75–1.85 */
 .prose{font-family:var(--serif);font-size:14.5px;line-height:1.62;
@@ -359,22 +359,22 @@ textarea.inp{font-family:var(--serif);font-size:15px;line-height:1.65;letter-spa
 
 /* ── 進場／旅程列表 ─────────────────────────────────────── */
 .gate{position:fixed;inset:0;z-index:70;background:var(--paper);overflow-y:auto;display:none;
-  padding:calc(env(safe-area-inset-top) + 22px) 16px calc(env(safe-area-inset-bottom) + 22px)}
+  padding:calc(env(safe-area-inset-top) + 18px) 13px calc(env(safe-area-inset-bottom) + 20px)}
 .gate.on{display:block}
-.brand{color:var(--ink2);font-family:var(--mono);letter-spacing:.34em;
-  text-transform:uppercase;font-size:12px}
-.brandbig{color:var(--ink);font-size:35px;font-weight:600;letter-spacing:-.04em;
-  line-height:.96;margin:6px 0 20px;font-family:var(--display)}
-.panel{background:var(--leaf);border:1px solid var(--rule2);border-radius:var(--r);
-  border-color:var(--rule);padding:16px;margin-bottom:12px}
-.panel h3{font-family:var(--display);font-size:15px;font-weight:600;margin-bottom:9px;letter-spacing:-.01em}
-.triprow{display:flex;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid var(--rule2);width:100%;text-align:left}
+.brand{color:var(--ink2);font-family:var(--mono);letter-spacing:.3em;
+  text-transform:uppercase;font-size:10.5px}
+.brandbig{color:var(--ink);font-size:31px;font-weight:600;letter-spacing:-.04em;
+  line-height:.96;margin:4px 0 15px;font-family:var(--display)}
+.panel{background:var(--leaf);border:1px solid rgba(27,26,22,.20);border-radius:var(--r);
+  padding:12px 13px 13px;margin-bottom:9px}
+.panel h3{font-family:var(--display);font-size:14px;font-weight:600;margin-bottom:8px;letter-spacing:-.01em}
+.triprow{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--rule2);width:100%;text-align:left}
 .triprow:last-child{border-bottom:none}
-.tripswatch{width:26px;height:34px;flex:0 0 auto;border:1px solid rgba(0,0,0,.22);border-radius:6px}
 .tripname{flex:1;min-width:0}
-.tripname b{display:block;font-family:var(--display);font-size:15px;font-weight:600;letter-spacing:-.01em;
+.tripname b{display:block;font-family:var(--display);font-size:14px;font-weight:600;letter-spacing:-.01em;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.tripname span{font-family:var(--mono);font-size:11px;color:var(--ink2);letter-spacing:.04em}
+.tripname span{display:block;font-family:var(--mono);font-size:10px;color:var(--ink2);
+  letter-spacing:.03em;line-height:1.5;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 .toast{position:fixed;left:50%;bottom:calc(var(--dock) + env(safe-area-inset-bottom) + 14px);
   transform:translateX(-50%);z-index:90;background:var(--ink);color:var(--leaf);
@@ -1077,14 +1077,13 @@ async function renderGate() {
     h += '<div class="panel"><h3>我的旅程</h3>';
     trips.sort((x, y) => (y.startDate || '').localeCompare(x.startDate || ''));
     trips.forEach((t, i) => {
-      const end = t.startDate ? dateAdd(t.startDate, (t.days || 1) - 1) : '';
-      const state = tripState(t);
+      const a = t.startDate ? dateParts(t.startDate) : null;
+      const b = t.startDate ? dateParts(dateAdd(t.startDate, (t.days || 1) - 1)) : null;
+      const span = a ? a.m + '/' + a.d + ' – ' + b.m + '/' + b.d : '';
       h += '<button class="triprow" data-open="' + esc(t.code) + '">' +
-             '<span class="tripswatch" style="background:' + hueOf(i) + '"></span>' +
              '<span class="tripname"><b>' + esc(t.name || '未命名旅程') + '</b>' +
-             '<span>' + esc(t.startDate || '') + (end ? ' – ' + esc(end) : '') +
-             ' · ' + esc(t.code) + ' · ' + state + '</span></span>' +
-             '<span class="lab">開啟 →</span></button>';
+             '<span>' + span + ' · ' + (t.days || 1) + ' 天 · ' + tripState(t) + '</span></span>' +
+             '<span class="lab" style="flex:0 0 auto">→</span></button>';
     });
     h += '</div>';
   }
@@ -1477,8 +1476,8 @@ function renderPlate() {
           clamp(Math.round((Number(r.card.data.stayMin) || 20) / 4), 4, 20) + 'px"></i>').join('') +
           '</div>' : '') +
         '<div class="startrow">' +
-          '<button class="btn" id="btnStart">出發 ' + dayStart(d) + '</button>' +
-          (dayUrl ? '<a class="btn" href="' + dayUrl + '" target="_blank" rel="noopener">當日全程地圖 ↗</a>' : '') +
+          '<button class="btn fill" id="btnStart">出發 ' + dayStart(d) + '</button>' +
+          (dayUrl ? '<a class="btn fill" href="' + dayUrl + '" target="_blank" rel="noopener">Map ↗</a>' : '') +
         '</div>' +
       '</div></div></div>';
   } else {
