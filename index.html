@@ -2,11 +2,18 @@
 <html lang="zh-Hant">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
+<!-- 刻意不寫 viewport-fit=cover。有它，iOS 會把網頁視窗鋪滿整個螢幕、
+     再用 env(safe-area-inset-bottom) 回報 34px 要我們自己讓開 home indicator，
+     那 34px 就是頁尾那條空白。拿掉之後 env() 一律回 0，iOS 改成把網頁視窗
+     縮到 home indicator 上面——那條變成系統在管，網頁畫不到也不必墊。
+     Clinical-Tools 就是這樣，所以它完全沒有頁尾空白。 -->
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>Travel</title>
 <meta name="theme-color" content="#FBF6EA">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<!-- black-translucent 要搭配 viewport-fit=cover 才成立（內容鋪到狀態列底下）。
+     兩個一起拿掉，狀態列交還給系統。 -->
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="Travel">
 <link rel="manifest" href="./manifest.webmanifest">
 <link rel="apple-touch-icon" href="./apple-touch-icon.png">
@@ -56,10 +63,15 @@
      （實測 "Helvetica Neue Condensed Bold" 抓不到、HelveticaNeue-CondensedBold 抓得到）。
      這支永遠是粗的，所以只用在字重 600 的標題上。
      中文沒有壓縮字面，會落到蘋方，正常寬度——這是要的效果。 */
-  /* 標題與站名的中文走宋體。Songti TC 有真的 Bold（700），
-     字重寫 600 時瀏覽器會選 ≥600 的那一面，也就是真 Bold，不會被假造。 */
+  /* 標題的中文原本寫 Songti TC——那是 macOS 才有的字，**iOS 沒有**
+     （實機探測只有 Hiragino Mincho ProN、Heiti TC、PingFang TC 三支），
+     所以那段設定在 iPhone 上一直是空的、默默掉回蘋方。
+     iOS 上唯一的明體是 Hiragino Mincho ProN，日文字型。
+     這支 app 的站名幾乎都是日文地名（滝の湯、瑞巖寺、五色沼），
+     用日文明體的字面反而是對的；漢字的日式字形在這裡不是缺點。
+     Songti TC 留在最後：桌面瀏覽器上仍然會優先用它。 */
   --display:"HelveticaNeue-CondensedBold","Avenir Next Condensed",
-            "Helvetica Neue",Helvetica,"Songti TC",serif;
+            "Helvetica Neue",Helvetica,"Songti TC","Hiragino Mincho ProN",serif;
   /* 內文改走黑體：宋體的橫畫是髮絲，14.5px 在 iPhone 上會整段泛灰、筆畫斷裂。
      襯線留給標題用。 */
   --serif:"Helvetica Neue",Helvetica,"PingFang TC",sans-serif;
@@ -74,8 +86,8 @@
   --rail:44px;              /* 書口分頁鐵 */
   --bind:10px;              /* 左緣留白 */
   --dock:46px;
-  /* 瀏覽器裡的底部工具列本來就蓋住 home indicator，再墊一次 safe-area
-     就會在頁底留下一條空白。只有加到主畫面的獨立模式才需要墊。 */
+  /* 沒有 viewport-fit=cover 時 env() 一律回 0，這裡等於恆為 0。
+     定義留著是為了「哪天真的要鋪滿螢幕」時改一行就回得去。 */
   --sab:0px;
 }
 @media (display-mode: standalone), (display-mode: fullscreen){
@@ -343,9 +355,7 @@ textarea.inp{font-family:var(--serif);font-size:15px;line-height:1.65;letter-spa
      改成把 safe-area 算進整條的高度、內容垂直置中，空白就上下均分。 */
   position:absolute;left:0;right:var(--rail);bottom:0;z-index:20;
   height:calc(var(--dock) + var(--sab));
-  /* home indicator 只需要大約 20pt 的淨空，不必把整段 safe-area 都讓出來。
-     讓出全部的話按鈕會停在半空中，底下那條空白比操作列本身還顯眼。 */
-  padding:0 12px calc(var(--sab) * .34) var(--bind);
+  padding:0 12px var(--sab) var(--bind);
   display:flex;align-items:center;gap:8px;
   background:var(--leaf);border-top:1px solid var(--rule2);
   border-radius:0;border-top:1px solid var(--rule1);
@@ -372,7 +382,7 @@ textarea.inp{font-family:var(--serif);font-size:15px;line-height:1.65;letter-spa
   display:flex;align-items:center;gap:10px;padding:13px 15px 11px;
   border-bottom:1px solid var(--rule);
 }
-.sheethead h2{font-family:var(--display);font-size:17px;font-weight:600;letter-spacing:-.01em;flex:1;min-width:0;
+.sheethead h2{font-family:var(--sans);font-size:17px;font-weight:600;letter-spacing:-.01em;flex:1;min-width:0;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sheetbody{padding:14px}
 /* 手冊的四欄格線在窄螢幕收成一欄，標籤吊在邊欄 */
@@ -424,7 +434,7 @@ textarea.inp{font-family:var(--serif);font-size:15px;line-height:1.65;letter-spa
   line-height:.96;margin:4px 0 15px;font-family:var(--display)}
 .panel{background:var(--leaf);border:1px solid rgba(27,26,22,.20);border-radius:var(--r);
   padding:12px 13px 13px;margin-bottom:9px}
-.panel h3{font-family:var(--display);font-size:14px;font-weight:600;margin-bottom:8px;letter-spacing:-.01em}
+.panel h3{font-family:var(--sans);font-size:14px;font-weight:600;margin-bottom:8px;letter-spacing:-.01em}
 .triprow{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--rule2);width:100%;text-align:left}
 .triprow:last-child{border-bottom:none}
 .tripname{flex:1;min-width:0}
@@ -547,7 +557,7 @@ const HUES = [
 /* 建置代號。手機上「改了但看起來沒變」十之八九是舊快取，
    在設定裡把這個字串印出來，一眼就知道手上這份是不是新的。
    改版時跟著 sw.js 的 CACHE 一起跳號。 */
-const BUILD = '2026-08-29 · v10';
+const BUILD = '2026-08-29 · v11';
 const VERMILION = '#D62D14';
 /* 已經過去的分頁用的極淺灰。比紙略深一點點，形狀還在但退到背景去。 */
 const PAST_TAB = '#D9D6CE';
