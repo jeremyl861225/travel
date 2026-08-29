@@ -40,6 +40,7 @@
   --accent:#0E7A78;         /* 當日色，JS 換 */
   --accent-ink:#FFFFFF;     /* 當日色「上面」的字 */
   --accent-line:#0E7A78;    /* 當日色當線條／小字時的暗版，JS 換 */
+  --accent-edge:transparent;/* 當日色太淡時補的髮絲邊，JS 換 */
   --btn:#0E7A78;            /* 主要按鈕填色（對比不足時已推暗或推亮） */
   --btn-ink:#FFFFFF;
 
@@ -116,7 +117,7 @@ a{color:inherit}
   font-family:var(--sans); font-size:12.5px; font-weight:600; letter-spacing:.02em;
   color:#fff; border:none; border-radius:0 11px 11px 0;
   margin-left:3px; padding:10px 0; white-space:nowrap;
-  box-shadow:inset 1px 0 0 rgba(0,0,0,.22);
+  box-shadow:inset 1px 0 0 rgba(0,0,0,.22), inset 0 0 0 1px var(--accent-edge);
 }
 .tab .td{font-family:var(--mono);font-size:9.5px;font-weight:500;opacity:.76;letter-spacing:.03em}
 .tab.cjk{letter-spacing:.14em;font-size:12.5px}
@@ -164,7 +165,7 @@ a{color:inherit}
 /* 參考站的實心方磚：線稿住在一塊當日板色裡，不是散落的彩色小圓點 */
 .tile{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;
   width:26px;height:26px;border-radius:6px;background:var(--accent);color:var(--accent-ink);
-  margin-top:1px}
+  margin-top:1px;box-shadow:inset 0 0 0 1px var(--accent-edge)}
 .tile .mark{width:16px;height:16px;stroke-width:2}
 .leaf.past .tile{opacity:.62}
 
@@ -175,6 +176,7 @@ a{color:inherit}
 }
 .punch.on{background:var(--accent);border-color:var(--rule)}
 .nextlab{display:inline-block;vertical-align:2px;margin-left:8px;background:var(--accent);
+  box-shadow:inset 0 0 0 1px var(--accent-edge);
   color:var(--accent-ink);font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;
   padding:2px 6px 3px;border-radius:4px;font-weight:600}
 
@@ -223,7 +225,7 @@ a{color:inherit}
 .headmain{display:grid;grid-template-columns:76px 1fr;align-items:start}
 /* DAY 那一欄就是當日色的實心塊——參考圖用實心方磚承載顏色的手法 */
 .headmar{padding:9px 8px 11px 10px;background:var(--accent);color:var(--accent-ink);
-  border-radius:0 0 8px 0}
+  border-radius:0 0 8px 0;box-shadow:inset -1px -1px 0 var(--accent-edge)}
 .dnum{font-family:var(--mono);font-size:11px;letter-spacing:.1em;opacity:.8}
 .dbig{font-size:30px;font-weight:600;line-height:.9;letter-spacing:-.04em;margin-top:3px}
 .headbody{padding:9px 12px 11px}
@@ -480,7 +482,19 @@ const CFG = {
   key: 'sb_publishable_pjoI0uuRcCn16-GMC_g0xw_9nqoJU-V',
   iters: 250000,
 };
-const HUES = ['#D2571C','#E0A70B','#3F8F3A','#0E7A78','#1F45A8','#6B3FA0','#8E4A24'];
+/* 使用者從 colormind 的原始色票裡挑的：F 組全五色 ＋ G1/G2/G3 ＋ C1。
+   九色＝九天不重複，第十天起循環。順序照他給的，沒有重排。 */
+const HUES = [
+  '#9D914A',  // F1 橄欖金
+  '#342F32',  // F2 近黑暖灰
+  '#597A66',  // F3 苔綠
+  '#909D7E',  // F4 鼠尾草
+  '#E4E5E3',  // F5 近白 — 在紙上只有 1.1:1，靠 --accent-edge 補邊才看得見
+  '#6A3D4F',  // G1 李
+  '#806386',  // G2 藕紫
+  '#907DCE',  // G3 長春花
+  '#304750',  // C1 板岩藍
+];
 const VERMILION = '#D62D14';
 const MARKS = ['nature','heritage','shop','play','food','stay','transit','view','hot','pin'];
 const DEFAULT_CATS = [
@@ -619,14 +633,19 @@ function buttonFill(hex) {
   }
   return relLum(c) < 0.28 ? '#151310' : '#FFFDF7';
 }
+const PAPER = '#FBF6EA';
 function applyBoard(hue) {
   const r = document.documentElement.style;
   const btn = buttonFill(hue);
   r.setProperty('--accent', hue);
   r.setProperty('--accent-ink', inkOn(hue));
-  r.setProperty('--accent-line', textable(hue, '#FBF6EA'));
+  r.setProperty('--accent-line', textable(hue, PAPER));
   r.setProperty('--btn', btn);
   r.setProperty('--btn-ink', inkOn(btn));
+  /* 太淡的當日色（例如近白）在紙上等於沒有形狀，補一道髮絲邊讓方磚與色塊還在。
+     不改使用者挑的顏色，只補邊。 */
+  const faint = contrast(hex2rgb(hue), hex2rgb(PAPER)) < 1.6;
+  r.setProperty('--accent-edge', faint ? 'rgba(27,26,22,.45)' : 'transparent');
   const tc = $('meta[name=theme-color]'); if (tc) tc.setAttribute('content', '#FBF6EA');
 }
 const hueOf = i => HUES[((i % HUES.length) + HUES.length) % HUES.length];

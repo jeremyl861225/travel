@@ -6,3 +6,4 @@ _palettes.html
 # 行程內容一律不進版控：只存在 Supabase 與本機暫存區
 docs/refs/*.travel.json
 *.travel.json
+_fonts.html
