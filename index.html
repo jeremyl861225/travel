@@ -244,9 +244,17 @@ a{color:inherit}
 .btn.wide{width:100%}
 .btn[disabled]{opacity:.4}
 .inp{
-  width:100%;background:transparent;border:1px solid var(--rule);border-radius:var(--r2);
+  width:100%;min-width:0;max-width:100%;
+  background:transparent;border:1px solid var(--rule);border-radius:var(--r2);
   padding:7px 10px;font-family:var(--mono);font-size:13.5px;letter-spacing:.02em;
 }
+/* iOS 的 date／time／number 有自己的內建寬度，width:100% 壓不住，
+   會撐破格線壓到隔壁欄位上。關掉原生外觀才收得回來。 */
+input[type=date].inp, input[type=time].inp, input[type=number].inp{
+  -webkit-appearance:none; appearance:none; text-align:left;
+}
+input[type=date].inp::-webkit-date-and-time-value{ text-align:left; }
+input[type=number].inp{ -moz-appearance:textfield; }
 /* 焦點是邊框變色加粗，不是 outline、不是 glow。用當日色的暗版，
    因為鉻黃那種亮色當 1px 線在紙上只有 1.5:1，等於看不見。 */
 .inp:focus{outline:none;border-color:var(--accent-line);
@@ -1099,7 +1107,7 @@ async function renderGate() {
   h += '<div class="panel"><h3>建立新旅程</h3>' +
        '<div class="fld stack"><span class="lab">名稱</span>' +
        '<input class="inp" id="newName" placeholder="例：京都五日"></div>' +
-       '<div style="display:grid;grid-template-columns:1fr 76px;gap:9px">' +
+       '<div style="display:grid;grid-template-columns:minmax(0,1fr) 68px;gap:9px">' +
        '<div style="min-width:0"><span class="lab">出發日</span>' +
        '<input class="inp" id="newStart" type="date" value="' + todayISO() + '"></div>' +
        '<div style="min-width:0"><span class="lab">天數</span>' +
@@ -1264,28 +1272,45 @@ function askNick() {
 'use strict';
 /* ═══ Google Maps 網址（不花錢，官方的 URL 格式） ═══════════ */
 const GMODE = { drive:'driving', transit:'transit', walk:'walking', bicycle:'bicycling' };
+const GBASE = 'https://www.google.com/maps/';
+
+/* 用地名查，不要用座標——座標只會落一根圖釘，看不到營業時間、評論與照片。
+   但 tohoku-2026 踩過的坑要一起帶著：**Google 查不到地名時不會報錯，
+   會退回搜尋「使用者所在地附近的同類地點」**，實測過指到 2,239 km 外的案例。
+   所以查詢字串的優先順序是：
+     1. place.name — 從 Google 抓回來的正式名稱，或匯入時指定的查詢字串（tohoku 的 gq），
+        這是最可靠的，因為它本來就是拿來查 Google 的
+     2. 卡片顯示名稱 — 使用者自己打的，可能過於籠統（「滝の湯」會變成分類搜尋）
+   兩者都沒有才退回座標。有 place_id 時一律附上，那是唯一精確的識別。 */
+function gq(c) {
+  if (!c) return '';
+  const p = c.data.place || {};
+  return String(p.name || c.data.name || '').trim();
+}
 function pt(c) {
+  const q = gq(c);
+  if (q) return encodeURIComponent(q);
   const p = c && c.data.place;
-  if (p && p.lat != null) return p.lat + ',' + p.lng;
-  return encodeURIComponent(c ? c.data.name : '');
+  return (p && p.lat != null) ? p.lat + ',' + p.lng : '';
 }
 function gmPlace(c) {
   const p = c.data.place || {};
-  /* 順序不能顛倒。Google Maps 查不到地名時「不會報錯」，會退回搜尋使用者所在地
-     附近的同類地點——tohoku-2026 實測過指到 2,239 km 外的案例。
-     所以：有 place_id 就用 place_id（唯一精確）、其次用座標、名稱是最後手段。 */
-  if (p.placeId) {
-    return 'https://www.google.com/maps/search/?api=1&query=' +
-           encodeURIComponent(c.data.name || p.placeId) +
-           '&query_place_id=' + encodeURIComponent(p.placeId);
+  const q = gq(c);
+  if (q) {
+    return GBASE + 'search/?api=1&query=' + encodeURIComponent(q) +
+           (p.placeId ? '&query_place_id=' + encodeURIComponent(p.placeId) : '');
   }
-  if (p.lat != null && p.lng != null) {
-    return 'https://www.google.com/maps/search/?api=1&query=' + p.lat + ',' + p.lng;
-  }
-  return 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(c.data.name || '');
+  if (p.lat != null && p.lng != null) return GBASE + 'search/?api=1&query=' + p.lat + ',' + p.lng;
+  return GBASE + 'search/?api=1&query=';
+}
+/* 名稱解析錯了的逃生口：直接用座標開。放在卡片展開後的動作列。 */
+function gmCoords(c) {
+  const p = c.data.place || {};
+  if (p.lat == null) return null;
+  return GBASE + 'search/?api=1&query=' + p.lat + ',' + p.lng;
 }
 function gmDir(a, b, mode) {
-  let u = 'https://www.google.com/maps/dir/?api=1&origin=' + pt(a) + '&destination=' + pt(b) +
+  let u = GBASE + 'dir/?api=1&origin=' + pt(a) + '&destination=' + pt(b) +
           '&travelmode=' + (GMODE[mode] || 'driving');
   const pa = a.data.place, pb = b.data.place;
   if (pa && pa.placeId) u += '&origin_place_id=' + encodeURIComponent(pa.placeId);
@@ -1296,7 +1321,7 @@ function gmDay(list, mode) {
   if (list.length < 2) return null;
   /* Google 的 URL API 最多吃 9 個中途點，超過就只帶前 9 個。 */
   const mid = list.slice(1, -1).slice(0, 9);
-  let u = 'https://www.google.com/maps/dir/?api=1&origin=' + pt(list[0]) +
+  let u = GBASE + 'dir/?api=1&origin=' + pt(list[0]) +
           '&destination=' + pt(list[list.length - 1]) + '&travelmode=' + (GMODE[mode] || 'driving');
   if (mid.length) u += '&waypoints=' + mid.map(pt).join('%7C');
   return u;
@@ -1433,6 +1458,9 @@ function detailHTML(c, r) {
   h += '<div class="blk"><span class="lab">動作</span><div class="row">' +
     '<button class="btn" data-edit="' + c.id + '">編輯</button>' +
     '<a class="btn" href="' + gmPlace(c) + '" target="_blank" rel="noopener">' + mark('pin','sm') + ' 地圖</a>' +
+    (!(d.place && d.place.placeId) && gmCoords(c)
+      ? '<a class="btn" href="' + gmCoords(c) + '" target="_blank" rel="noopener" ' +
+        'title="地名查錯時用這個">用座標開</a>' : '') +
     (isStay && c.dayIndex >= 0 ? '<button class="btn" data-dup="' + c.id + '">複製到隔天開頭</button>' : '') +
     '</div></div>';
   return h + '</div>';
@@ -1457,7 +1485,7 @@ function renderPlate() {
     const w = S.weather[d];
     const firstPin = sched.find(r => r.pinTarget != null);
     const list = dayCards(d);
-    const dayUrl = gmDay(list.filter(c => c.data.place && c.data.place.lat != null),
+    const dayUrl = gmDay(list.filter(c => gq(c) || (c.data.place && c.data.place.lat != null)),
                          S.trip.defaultMode);
     h += '<div class="head"><div class="headtop">' +
       '<button class="btn" id="btnHome" style="min-height:26px;padding:2px 8px">←</button>' +
@@ -1988,7 +2016,7 @@ function sheetTrip() {
     '<input class="inp" id="tName" value="' + esc(t.name) + '"></div>' +
     /* date input 在 iOS 上會撐出自己的寬度，用 flex 會擠爆隔壁；
        改成 grid 並讓兩欄都 min-width:0，才不會疊在一起。 */
-    '<div style="display:grid;grid-template-columns:1fr 76px;gap:10px;margin-bottom:13px">' +
+    '<div style="display:grid;grid-template-columns:minmax(0,1fr) 68px;gap:9px;margin-bottom:13px">' +
       '<div style="min-width:0"><span class="lab">出發日</span>' +
       '<input class="inp" id="tStart" type="date" value="' + esc(t.startDate) + '"></div>' +
       '<div style="min-width:0"><span class="lab">天數</span>' +
