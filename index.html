@@ -50,7 +50,14 @@
      Hiragino Mincho 是日文字型，繁中會出現日式字形、Big5 專用字變豆腐，不可用。
      Heiti TC 是舊別名，現代 iOS 會導到 PingFang，寫了沒作用還誤導。 */
   --sans:"Helvetica Neue",Helvetica,"PingFang TC",system-ui,sans-serif;
-  --serif:Palatino,"Iowan Old Style","Songti TC",serif;
+  /* 標題走壓縮怪誕。font-stretch:condensed 對 Helvetica Neue 沒有作用——
+     壓縮字面在系統裡是獨立的一支，要直接指名 PostScript 名稱才抓得到
+     （實測 "Helvetica Neue Condensed Bold" 抓不到、HelveticaNeue-CondensedBold 抓得到）。
+     這支永遠是粗的，所以只用在字重 600 的標題上。
+     中文沒有壓縮字面，會落到蘋方，正常寬度——這是要的效果。 */
+  --display:"HelveticaNeue-CondensedBold","Avenir Next Condensed",
+            "Helvetica Neue",Helvetica,"PingFang TC",sans-serif;
+  --serif:Palatino,"Songti TC",serif;
   /* ui-monospace 是 iOS 上取得 SF Mono 的唯一正確寫法，直接寫 "SF Mono" 抓不到。
      iOS 沒有任何 CJK 等寬字型，所以等寬容器裡只放拉丁、數字、代號。 */
   --mono:ui-monospace,Menlo,monospace;
@@ -67,7 +74,7 @@
 html,body{height:100%}
 body{
   font-family:var(--sans); background:var(--paper); color:var(--ink);
-  font-size:16px; line-height:1.55; overscroll-behavior:none;
+  font-size:15px; line-height:1.45; overscroll-behavior:none;
   -webkit-font-smoothing:antialiased;
 }
 button,input,select,textarea{font:inherit;color:inherit;background:none;border:none}
@@ -138,21 +145,21 @@ a{color:inherit}
 /* 下一站：卡片左緣一道當日色的書口，比整張換色安靜 */
 .leaf.top{background:var(--leaf-top);box-shadow:inset 4px 0 0 var(--accent)}
 .leaf.past{background:var(--leaf-sunk);color:var(--ink3)}
-.leaf.past .lname{color:var(--ink2)}
+.leaf.past .lname{color:var(--ink2);font-family:var(--display)}
 .leaf.drag{border-color:var(--ink1,var(--rule1));border-width:2px;position:relative;z-index:30}
 .leaf.ghost{opacity:.28}
 
 /* 頁的內部格線：邊欄放機器語與刻印，主欄放內容 */
 .lrow{display:grid;grid-template-columns:76px 1fr;align-items:stretch}
 .lmar{
-  padding:9px 8px 9px 10px; border-right:1px solid var(--rule2);
+  padding:8px 8px 8px 10px; border-right:1px solid var(--rule2);
   display:flex;flex-direction:column;gap:2px;align-items:flex-start;
 }
-.ltime{font-family:var(--mono);font-size:16.5px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1.1}
+.ltime{font-family:var(--mono);font-size:15.5px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1.1}
 .lstay{font-family:var(--mono);font-size:10.5px;color:var(--ink2);letter-spacing:.02em;line-height:1.35}
-.lbody{padding:9px 12px 10px 10px;min-width:0;display:flex;gap:9px;align-items:flex-start}
-.lname{font-size:16.5px;font-weight:600;letter-spacing:-.01em;line-height:1.24;word-break:break-word}
-.lmeta{display:flex;flex-wrap:wrap;gap:2px 9px;align-items:center;margin-top:3px;
+.lbody{padding:8px 12px 9px 10px;min-width:0;display:flex;gap:9px;align-items:flex-start}
+.lname{font-size:15.5px;font-weight:600;letter-spacing:-.012em;line-height:1.16;word-break:break-word}
+.lmeta{display:flex;flex-wrap:wrap;gap:2px 7px;align-items:center;margin-top:3px;
   font-family:var(--mono);font-size:10.5px;color:var(--ink2);letter-spacing:.02em}
 .lmeta .sep{color:var(--ink3)}
 .laddr{font-family:var(--mono);font-size:11px;color:var(--ink2);margin-top:4px;
@@ -227,10 +234,10 @@ a{color:inherit}
 .headmar{padding:9px 8px 11px 10px;background:var(--accent);color:var(--accent-ink);
   border-radius:0 0 8px 0;box-shadow:inset -1px -1px 0 var(--accent-edge)}
 .dnum{font-family:var(--mono);font-size:11px;letter-spacing:.1em;opacity:.8}
-.dbig{font-size:30px;font-weight:600;line-height:.9;letter-spacing:-.04em;margin-top:3px}
+.dbig{font-size:27px;font-weight:600;line-height:.88;letter-spacing:-.045em;margin-top:2px;font-family:var(--display)}
 .headbody{padding:9px 12px 11px}
-.ddate{font-size:16.5px;font-weight:600;letter-spacing:-.01em}
-.dsub{font-family:var(--mono);font-size:11px;color:var(--ink2);margin-top:3px;letter-spacing:.02em;line-height:1.5}
+.ddate{font-size:15.5px;font-weight:600;letter-spacing:-.015em;line-height:1.2;font-family:var(--display)}
+.dsub{font-family:var(--mono);font-size:10.5px;color:var(--ink2);margin-top:3px;letter-spacing:.02em;line-height:1.42}
 .startrow{display:flex;align-items:center;gap:7px;margin-top:10px;flex-wrap:wrap}
 .startrow .btn{min-height:31px;padding:5px 10px;font-size:11.5px}
 
@@ -252,13 +259,13 @@ a{color:inherit}
 .btn[disabled]{opacity:.4}
 .inp{
   width:100%;background:transparent;border:1px solid var(--rule);border-radius:var(--r2);
-  padding:10px 12px;font-family:var(--mono);font-size:14.5px;letter-spacing:.02em;
+  padding:9px 12px;font-family:var(--mono);font-size:14px;letter-spacing:.02em;
 }
 /* 焦點是邊框變色加粗，不是 outline、不是 glow。用當日色的暗版，
    因為鉻黃那種亮色當 1px 線在紙上只有 1.5:1，等於看不見。 */
 .inp:focus{outline:none;border-color:var(--accent-line);
   box-shadow:inset 0 0 0 1px var(--accent-line)}
-textarea.inp{font-family:var(--serif);font-size:16px;line-height:1.8;letter-spacing:0;min-height:120px;resize:vertical}
+textarea.inp{font-family:var(--serif);font-size:15px;line-height:1.65;letter-spacing:0;min-height:120px;resize:vertical}
 .hint{font-family:var(--mono);font-size:11px;color:var(--ink3);line-height:1.5;margin-top:5px}
 
 /* ── 底部操作列（拇指可及） ─────────────────────────────── */
@@ -292,7 +299,7 @@ textarea.inp{font-family:var(--serif);font-size:16px;line-height:1.8;letter-spac
   display:flex;align-items:center;gap:10px;padding:13px 15px 11px;
   border-bottom:1px solid var(--rule);
 }
-.sheethead h2{font-size:18px;font-weight:600;letter-spacing:-.01em;flex:1;min-width:0;
+.sheethead h2{font-family:var(--display);font-size:17px;font-weight:600;letter-spacing:-.01em;flex:1;min-width:0;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .sheetbody{padding:14px}
 /* 手冊的四欄格線在窄螢幕收成一欄，標籤吊在邊欄 */
@@ -302,18 +309,18 @@ textarea.inp{font-family:var(--serif);font-size:16px;line-height:1.8;letter-spac
 .fld.stack > .lab{text-align:left;padding-top:0;margin-bottom:5px}
 .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 /* 拉丁的 1.5 對繁中太緊，內文要 1.75–1.85 */
-.prose{font-family:var(--serif);font-size:16px;line-height:1.8;
+.prose{font-family:var(--serif);font-size:14.5px;line-height:1.62;
   hanging-punctuation:allow-end}
 
 /* 類別選擇：刻印＋文字，不靠顏色分辨 */
 .cats{display:flex;flex-wrap:wrap;gap:6px}
 .cat{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--rule);
-  padding:6px 12px;border-radius:999px;font-size:12.5px;letter-spacing:.01em}
+  padding:6px 12px;border-radius:999px;font-size:12px;letter-spacing:.01em}
 .cat.on{background:var(--accent);color:var(--accent-ink);border-color:var(--rule1);font-weight:600}
 
 /* 待辦（預定）：勾選就是打一個孔 */
 .todo{display:flex;align-items:flex-start;gap:9px;padding:7px 0;border-bottom:1px solid var(--rule2)}
-.todo .t{flex:1;font-size:15px;line-height:1.45}
+.todo .t{flex:1;font-size:14.5px;line-height:1.4}
 .todo.done .t{color:var(--ink3);text-decoration:line-through}
 
 /* 卡片展開後的內文（宋體，一個尺寸做完） */
@@ -321,7 +328,7 @@ textarea.inp{font-family:var(--serif);font-size:16px;line-height:1.8;letter-spac
 .detail .blk{display:grid;grid-template-columns:76px 1fr;gap:0;padding-top:12px}
 .detail .blk > .lab{padding-right:10px;text-align:right;padding-top:4px}
 .detail .blk > div{min-width:0}
-.hours{font-family:var(--mono);font-size:11.5px;line-height:1.75;color:var(--ink2)}
+.hours{font-family:var(--mono);font-size:11px;line-height:1.62;color:var(--ink2)}
 .hours .today{color:var(--ink);font-weight:600}
 .linkline{display:block;font-family:var(--mono);font-size:12px;padding:3px 0;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -340,7 +347,7 @@ textarea.inp{font-family:var(--serif);font-size:16px;line-height:1.8;letter-spac
 .roadeta{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
 .roadeta .big{font-family:var(--mono);font-size:48px;font-weight:600;line-height:.9;
   letter-spacing:-.045em;font-variant-numeric:tabular-nums}
-.roadname{font-size:27px;font-weight:600;line-height:1.16;letter-spacing:-.02em;margin-top:12px}
+.roadname{font-size:24px;font-weight:600;line-height:1.12;letter-spacing:-.025em;margin-top:11px;font-family:var(--display)}
 .roadsub{font-family:var(--mono);font-size:12.5px;color:var(--ink2);margin-top:8px;line-height:1.6}
 .roadnext{margin-top:auto;padding-top:12px;border-top:1px solid var(--rule2);
   font-family:var(--mono);font-size:12px;color:var(--ink2)}
@@ -352,7 +359,7 @@ textarea.inp{font-family:var(--serif);font-size:16px;line-height:1.8;letter-spac
 .restrow:last-child{border-bottom:none}
 .restrow .t{font-family:var(--mono);font-size:13px;font-weight:600;
   font-variant-numeric:tabular-nums;flex:0 0 auto}
-.restrow .n{flex:1;min-width:0;font-size:14.5px;overflow:hidden;
+.restrow .n{flex:1;min-width:0;font-family:var(--display);font-size:14px;overflow:hidden;
   text-overflow:ellipsis;white-space:nowrap}
 .restrow .g{font-family:var(--mono);font-size:10.5px;color:var(--ink3);flex:0 0 auto}
 .restrow.late .t{color:var(--vermilion)}
@@ -367,16 +374,16 @@ textarea.inp{font-family:var(--serif);font-size:16px;line-height:1.8;letter-spac
 .gate.on{display:block}
 .brand{color:var(--ink2);font-family:var(--mono);letter-spacing:.34em;
   text-transform:uppercase;font-size:12px}
-.brandbig{color:var(--ink);font-size:39px;font-weight:600;letter-spacing:-.035em;
-  line-height:1;margin:6px 0 22px}
+.brandbig{color:var(--ink);font-size:35px;font-weight:600;letter-spacing:-.04em;
+  line-height:.96;margin:6px 0 20px;font-family:var(--display)}
 .panel{background:var(--leaf);border:1px solid var(--rule2);border-radius:var(--r);
   border-color:var(--rule);padding:16px;margin-bottom:12px}
-.panel h3{font-size:16px;font-weight:600;margin-bottom:9px;letter-spacing:-.01em}
+.panel h3{font-family:var(--display);font-size:15px;font-weight:600;margin-bottom:9px;letter-spacing:-.01em}
 .triprow{display:flex;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid var(--rule2);width:100%;text-align:left}
 .triprow:last-child{border-bottom:none}
 .tripswatch{width:26px;height:34px;flex:0 0 auto;border:1px solid rgba(0,0,0,.22);border-radius:6px}
 .tripname{flex:1;min-width:0}
-.tripname b{display:block;font-size:16px;font-weight:600;letter-spacing:-.01em;
+.tripname b{display:block;font-family:var(--display);font-size:15px;font-weight:600;letter-spacing:-.01em;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .tripname span{font-family:var(--mono);font-size:11px;color:var(--ink2);letter-spacing:.04em}
 
@@ -1352,7 +1359,7 @@ function leafHTML(r, i, flags) {
   const cat = catBy(d.catId);
   const cls = 'leaf' + (flags.top ? ' top' : '') + (flags.past ? ' past' : '');
   let meta = [];
-  if (cat) meta.push('<span>' + esc(cat.name) + '</span>');
+  if (cat) meta.push(mark(cat.mark, 'sm') + '<span>' + esc(cat.name) + '</span>');
   const p = d.place || {};
   if (p.rating != null) meta.push('★ ' + p.rating + (p.ratingCount ? ' (' + p.ratingCount + ')' : ''));
   if (r.hours && r.hours.unknown === false && !r.hours.open) meta.push('到時沒開');
@@ -1387,7 +1394,6 @@ function leafHTML(r, i, flags) {
         '<span class="grip"></span>' +
       '</div>' +
       '<div class="lbody" data-open="' + c.id + '">' +
-        (cat ? '<span class="tile">' + mark(cat.mark) + '</span>' : '') +
         '<div style="min-width:0;flex:1">' +
           '<div class="lname">' + (esc(d.name) || '<span style="color:var(--ink3)">未命名</span>') +
           (flags.top ? '<span class="nextlab">下一站</span>' : '') + '</div>' +
