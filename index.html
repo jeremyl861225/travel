@@ -334,10 +334,10 @@ a{color:inherit}
   font-family:var(--display);-webkit-text-stroke:.9px currentColor}
 .headbody{padding:9px 12px 10px}
 .ddate{font-size:15.5px;font-weight:600;letter-spacing:-.015em;line-height:1.2;
-  font-family:var(--display);display:flex;align-items:baseline;gap:8px}
-/* 天氣：日期同一行、靠右、最輕的一階。它是背景，不是要你動作的東西。 */
-.dwx{margin-left:auto;font-family:var(--mono);font-size:10.5px;font-weight:500;
-  letter-spacing:.02em;color:var(--ink3);white-space:nowrap;flex:0 0 auto}
+  font-family:var(--display)}
+/* 天氣：自己一行，最輕的一階。它是背景，不是要你動作的東西。 */
+.dwx{font-family:var(--mono);font-size:10.5px;font-weight:500;margin-top:3px;
+  letter-spacing:.02em;color:var(--ink3);line-height:1.4}
 /* 「現在」：整個日首最重的一行，前面那道朱紅就是時間軸上那根線。 */
 /* flex 只能有兩個項目：朱紅記號、以及包成一整塊的文字。
    讓行內片段各自當 flex 項目的話，「應該在／瑞巖寺／，還有 34 分」
@@ -346,6 +346,8 @@ a{color:inherit}
   font-family:var(--mono);font-size:12px;line-height:1.45;color:var(--ink)}
 .dnow > span{min-width:0}
 .dnow b{font-family:var(--serif);font-size:13px;font-weight:600;white-space:nowrap}
+/* 「，還有 34分」整段不斷行：斷在「還／有」中間會讀成兩個詞。 */
+.dnow .nb{white-space:nowrap;font-style:normal;letter-spacing:0}
 .nowtick{flex:0 0 auto;width:2px;height:11px;background:var(--vermilion);
   border-radius:1px;transform:translateY(1px)}
 .ddate .num{font-family:var(--mono);font-size:17px;letter-spacing:-.02em}
@@ -667,7 +669,7 @@ let HUES = hueSet(6);                    // openTrip() 會依實際天數重算
 /* 建置代號。手機上「改了但看起來沒變」十之八九是舊快取，
    在設定裡把這個字串印出來，一眼就知道手上這份是不是新的。
    改版時跟著 sw.js 的 CACHE 一起跳號。 */
-const BUILD = '2026-08-30 · v25';
+const BUILD = '2026-08-30 · v26';
 const VERMILION = '#D62D14';
 /* 已經過去的分頁用的極淺灰。比紙略深一點點，形狀還在但退到背景去。 */
 const PAST_TAB = '#D9D6CE';
@@ -1973,17 +1975,16 @@ function renderPlate() {
       '<div class="headbody">' +
         /* 數字走 Avenir Next（跟時刻同一支），中文才走明體。
            不分開的話日期會用壓縮體的數字，跟卡片上的時刻長得不一樣。 */
-        /* 天氣併進日期那一行靠右。它是背景資訊不是事件——獨佔一行的話，
-           會跟「現在」擠在一起，而且比「現在」還顯眼，輕重就顛倒了。 */
+        /* 天氣自己一行。併進日期那一行試過——欄寬不夠，日期會被拆成
+           「週／三」、天氣還被切掉。輕重靠字級與顏色分，不是靠擠在同一行。 */
         '<div class="ddate"><span class="num">' + dp.m + '</span> 月 <span class="num">' +
           dp.d + '</span> 日<span style="font-size:15px;color:var(--ink2)"> 週' +
-          WEEK[dp.w] + '</span>' +
-          (w && w.tooFar
-            ? '<span class="dwx">天氣 ' + (() => { const q = dateParts(w.from);
-                return q.m + '/' + q.d; })() + ' 起</span>'
-            : w ? '<span class="dwx">' + (WCODE[w.code] || '') + ' ' +
-                  w.tmin + '–' + w.tmax + '°C</span>' : '') +
-        '</div>' +
+          WEEK[dp.w] + '</span></div>' +
+        (w && w.tooFar
+          ? '<div class="dwx">天氣 ' + (() => { const q = dateParts(w.from);
+              return q.m + '/' + q.d; })() + ' 起看得到</div>'
+          : w ? '<div class="dwx">' + (WCODE[w.code] || '') + ' ' +
+                w.tmin + '–' + w.tmax + '°C</div>' : '') +
         /* 公休與撲空要在日首就看得到。點進每一張卡才發現「今天週一休館」
            已經太晚了——那是要換天的決定，不是換時間的決定。 */
         /* 今天：直接講「現在應該在哪」。行程表最沒用的時刻，
@@ -1997,12 +1998,12 @@ function renderPlate() {
              警告色留給公休與撲空，不要兩件事都染紅。 */
           const tick = '<i class="nowtick"></i>';
           if (at) return '<div class="dnow">' + tick + '<span>現在 ' + min2hm(n) +
-            '　應該在 <b>' + esc(at.card.data.name || '') + '</b>，還有 ' +
-            durTxt(at.depart - n) + '</span></div>';
+            '　應該在 <b>' + esc(at.card.data.name || '') + '</b>' +
+            '<em class="nb">，還有 ' + durTxt(at.depart - n) + '</em></span></div>';
           const nx = sched.find(x => x.arrive > n);
           if (nx) return '<div class="dnow">' + tick + '<span>現在 ' + min2hm(n) +
-            '　在往 <b>' + esc(nx.card.data.name || '') + '</b> 的路上，' +
-            durTxt(nx.arrive - n) + '後到</span></div>';
+            '　在往 <b>' + esc(nx.card.data.name || '') + '</b>' +
+            '<em class="nb">，' + durTxt(nx.arrive - n) + '後到</em></span></div>';
           return '<div class="dnow">' + tick + '<span>今天的行程已經結束</span></div>';
         })() +
         (() => {
