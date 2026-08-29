@@ -171,7 +171,14 @@ a{color:inherit}
 .leaf.ghost{opacity:.28}
 
 /* 頁的內部格線：邊欄放機器語與刻印，主欄放內容 */
-.lrow{display:grid;grid-template-columns:70px 1fr;align-items:stretch}
+.lrow{display:grid;grid-template-columns:70px 1fr auto;align-items:stretch}
+/* 地圖鍵自成一欄，不能包在 data-open 裡面——包進去點一下會連地圖也展開卡片。
+   命中區維持 44px 寬、整條高，拇指按得到。 */
+.lmap{display:flex;align-items:center;justify-content:center;flex:0 0 auto;
+  width:36px;color:inherit;opacity:.62;text-decoration:none;
+  border-left:1px solid var(--accent-rule)}
+.lmap:active{opacity:1}
+.lmap .mark{width:17px;height:17px;stroke-width:1.9}
 .lmar{
   padding:8px 8px 8px 10px; border-right:1px solid var(--accent-rule);
   display:flex;flex-direction:column;gap:2px;align-items:flex-start;
@@ -179,7 +186,7 @@ a{color:inherit}
 .ltime{font-family:var(--mono);font-size:15.5px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1.1}
 .lstay{font-family:var(--mono);font-size:10.5px;opacity:.78;letter-spacing:.02em;line-height:1.35}
 .lstay.pin{opacity:1;font-weight:600}
-.lbody{padding:8px 12px 9px 10px;min-width:0;display:flex;gap:9px;align-items:flex-start}
+.lbody{padding:8px 7px 9px 10px;min-width:0;display:flex;gap:9px;align-items:flex-start}
 .lname{font-family:var(--display);font-size:15.5px;font-weight:600;letter-spacing:-.012em;
   line-height:1.16;word-break:break-word}
 .lmeta{display:flex;flex-wrap:wrap;gap:2px 7px;align-items:center;margin-top:3px;
@@ -449,6 +456,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
   <symbol id="m-stay" viewBox="0 0 24 24"><path d="M3 19v-9h14a4 4 0 0 1 4 4v5"/><path d="M3 14h18"/><path d="M7 10V7h6v3"/><path d="M3 19h18"/></symbol>
   <!-- 外連箭頭。文字箭頭 U+2197 在 iOS 會被 Apple Color Emoji 接走，變成藍色方塊，
        只能自己畫；線寬與其他刻印同一套。 -->
+  <symbol id="m-map" viewBox="0 0 24 24"><path d="M12 21.5S19 14.9 19 10a7 7 0 1 0-14 0c0 4.9 7 11.5 7 11.5Z"/><circle cx="12" cy="10" r="2.6"/></symbol>
   <symbol id="m-back" viewBox="0 0 24 24"><path d="M20 12H5"/><path d="M11 5.5 4.5 12l6.5 6.5"/></symbol>
   <symbol id="m-ext" viewBox="0 0 24 24"><path d="M7 17 17 7"/><path d="M9.5 7H17v7.5"/></symbol>
   <symbol id="m-transit" viewBox="0 0 24 24"><path d="M4 4h16v10H4z"/><path d="M4 9.5h16"/><circle cx="8" cy="18" r="2.2"/><circle cx="16" cy="18" r="2.2"/></symbol>
@@ -1407,6 +1415,11 @@ function pt(c) {
   const p = c && c.data.place;
   return (p && p.lat != null) ? p.lat + ',' + p.lng : '';
 }
+/* 有沒有東西可以拿去開地圖：地名或座標，兩者有一就行。 */
+function hasMap(c) {
+  const p = (c && c.data.place) || {};
+  return !!(gq(c) || (p.lat != null && p.lng != null));
+}
 function gmPlace(c) {
   const p = c.data.place || {};
   const q = gq(c);
@@ -1519,6 +1532,9 @@ function leafHTML(r, i, flags) {
           (meta.length ? '<div class="lmeta">' + meta.join('<span class="sep">·</span>') + '</div>' : '') +
         '</div>' +
       '</div>' +
+      /* 沒有地名也沒有座標就不放鍵——放了只會開到一張空白地圖。 */
+      (hasMap(c) ? '<a class="lmap" href="' + gmPlace(c) + '" target="_blank" rel="noopener" ' +
+        'aria-label="在 Google 地圖開啟">' + mark('map') + '</a>' : '<span class="lmap"></span>') +
     '</div>' + err +
     (S.open === c.id ? detailHTML(c, r) : '') +
   '</article>';
