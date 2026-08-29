@@ -68,11 +68,18 @@
   --rail:44px;              /* 書口分頁鐵 */
   --bind:10px;              /* 左緣留白 */
   --dock:52px;
+  /* 瀏覽器裡的底部工具列本來就蓋住 home indicator，再墊一次 safe-area
+     就會在頁底留下一條空白。只有加到主畫面的獨立模式才需要墊。 */
+  --sab:0px;
+}
+@media (display-mode: standalone), (display-mode: fullscreen){
+  :root{ --sab:env(safe-area-inset-bottom); }
 }
 @media (prefers-reduced-motion: reduce){ :root{ --step:1ms } }
 
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-html,body{height:100%;overflow-x:hidden;overscroll-behavior:none}
+/* iOS Safari 的 inset:0 指的是版面視窗，比看得到的區域高；用 dvh 才貼齊 */
+html,body{height:100dvh;overflow-x:hidden;overscroll-behavior:none}
 body{
   font-family:var(--sans); background:var(--paper); color:var(--ink);
   font-size:15px; line-height:1.45; overscroll-behavior:none;
@@ -91,21 +98,21 @@ a{color:inherit}
 
 /* ── 版面骨架 ───────────────────────────────────────────── */
 #app{
-  position:fixed; inset:0; display:grid;
+  position:fixed; left:0; right:0; top:0; height:100dvh; display:grid;
   grid-template-columns:1fr var(--rail);
   background:var(--paper);
 }
 .plate{
   position:relative; overflow-y:auto; overflow-x:hidden;
   -webkit-overflow-scrolling:touch;
-  padding:calc(env(safe-area-inset-top) + 10px) 0 calc(var(--dock) + env(safe-area-inset-bottom) + 24px) var(--bind);
+  padding:calc(env(safe-area-inset-top) + 10px) 0 calc(var(--dock) + var(--sab) + 24px) var(--bind);
   scroll-padding-top:80px; touch-action:pan-y;
 }
 
 /* ── 書口分頁鐵 ─────────────────────────────────────────── */
 .rail{
   position:relative; display:flex; flex-direction:column; gap:2px;
-  padding:calc(env(safe-area-inset-top) + 10px) 0 calc(env(safe-area-inset-bottom) + 8px) 0;
+  padding:calc(env(safe-area-inset-top) + 10px) 0 calc(var(--sab) + 8px) 0;
   background:rgba(27,26,22,.06); overflow-y:auto; scrollbar-width:none;
 }
 .rail::-webkit-scrollbar{display:none}
@@ -135,7 +142,6 @@ a{color:inherit}
 }
 .leaf + .leaf{margin-top:0}
 /* 下一站：卡片左緣一道當日色的書口，比整張換色安靜 */
-.leaf.top{box-shadow:inset 0 0 0 2px var(--accent-ink)}
 .leaf.past{opacity:.52}
 /* 空狀態卡在色底上：字色一律繼承，別再用紙底時代的灰 */
 .leaf.empty{padding:16px 15px 17px}
@@ -177,9 +183,6 @@ a{color:inherit}
   border:1px solid currentColor;background:transparent;display:inline-block;vertical-align:-2px;
 }
 .punch.on{background:currentColor;border-color:currentColor}
-.nextlab{display:inline-block;vertical-align:2px;margin-left:8px;
-  background:var(--accent-ink);color:var(--accent);font-family:var(--mono);font-size:9.5px;
-  letter-spacing:.1em;padding:2px 6px 3px;border-radius:3px;font-weight:600}
 
 /* 勘誤條：朱紅，只有這裡用得到 */
 .errata{
@@ -213,9 +216,15 @@ a{color:inherit}
 .head{margin:0 12px 10px 0;background:var(--leaf);border:1px solid var(--rule2);
   border-radius:var(--r);overflow:hidden;border-color:var(--rule)}
 /* 參考站那條迷你長條圖：一根柱子是一站，高度是停留時間 */
-.daybars{display:flex;gap:4px;align-items:flex-end;height:20px;margin-top:9px;justify-content:flex-start}
-.daybars i{flex:0 1 18px;display:block;background:var(--accent);min-height:4px;opacity:.9}
-.daybars i.now{opacity:1;outline:1px solid var(--ink);outline-offset:1px}
+/* 一天的形狀：軌是整天的跨度，膠囊是待在某個地方的時間，
+   膠囊之間的空白就是移動與空檔；直線是釘選的固定時刻。 */
+.strip{position:relative;height:14px;margin-top:10px;
+  background:rgba(27,26,22,.09);border-radius:99px}
+.strip i{position:absolute;top:0;bottom:0;background:var(--accent);border-radius:99px}
+.strip b{position:absolute;top:-3px;bottom:-3px;width:1.5px;background:var(--ink);opacity:.55}
+.striplab{display:flex;justify-content:space-between;margin-top:4px;
+  font-family:var(--mono);font-size:9.5px;letter-spacing:.03em;color:var(--ink3)}
+.striplab span:nth-child(2){opacity:.75}
 .headtop{display:flex;align-items:center;gap:8px;padding:5px 10px 5px 10px;border-bottom:1px solid var(--rule2)}
 .trip{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;
   color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
@@ -270,8 +279,8 @@ textarea.inp{font-family:var(--serif);font-size:15px;line-height:1.65;letter-spa
 /* ── 底部操作列（拇指可及） ─────────────────────────────── */
 .dock{
   position:fixed;left:0;right:var(--rail);bottom:0;z-index:20;
-  height:calc(var(--dock) + env(safe-area-inset-bottom));
-  padding:0 12px env(safe-area-inset-bottom) var(--bind);
+  height:calc(var(--dock) + var(--sab));
+  padding:0 12px var(--sab) var(--bind);
   display:flex;align-items:center;gap:8px;
   background:var(--leaf);border-top:1px solid var(--rule2);
   border-radius:0;border-top:1px solid var(--rule1);
@@ -282,14 +291,14 @@ textarea.inp{font-family:var(--serif);font-size:15px;line-height:1.65;letter-spa
 .sync.err{color:var(--vermilion)}
 
 /* ── 抽頁（sheet）：以打孔邊為軸的兩格步進，不淡入 ────────── */
-.sheetwrap{position:fixed;inset:0;z-index:60;display:none}
+.sheetwrap{position:fixed;left:0;right:0;top:0;height:100dvh;z-index:60;display:none}
 .sheetwrap.open{display:block}
 .scrim{position:absolute;inset:0;background:rgba(0,0,0,.42)}
 .sheet{
   position:absolute;left:0;right:0;bottom:0;max-height:92dvh;overflow-y:auto;
   background:var(--leaf);border-top:1px solid var(--rule2);
   border-radius:20px 20px 0 0;
-  padding:0 0 calc(env(safe-area-inset-bottom) + 16px);
+  padding:0 0 calc(var(--sab) + 16px);
   transform:translateY(100%);transition:transform var(--step) steps(2);
 }
 .sheetwrap.open .sheet{transform:translateY(0)}
@@ -339,42 +348,9 @@ textarea.inp{font-family:var(--serif);font-size:15px;line-height:1.65;letter-spa
 .imgs{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}
 .imgs img{height:96px;border:1px solid var(--rule2);border-radius:9px;background:rgba(0,0,0,.06)}
 
-/* ── 上路模式：一頁一站，字大到街上瞄一眼就夠 ──────────── */
-.road{position:fixed;inset:0;z-index:50;background:var(--paper);display:none;
-  grid-template-rows:auto auto 1fr;
-  padding:calc(env(safe-area-inset-top) + 10px) 12px calc(env(safe-area-inset-bottom) + 12px)}
-.road.on{display:grid}
-.roadhead{display:flex;align-items:center;gap:10px;color:var(--ink2);
-  font-family:var(--mono);font-size:11.5px;letter-spacing:.1em;text-transform:uppercase}
-.roadcard{background:var(--leaf);border:1px solid var(--rule2);border-radius:17px;
-  border-color:var(--rule);margin:10px 0;padding:19px 18px 20px;display:flex;flex-direction:column;min-height:0}
-.roadeta{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
-.roadeta .big{font-family:var(--mono);font-size:48px;font-weight:600;line-height:.9;
-  letter-spacing:-.045em;font-variant-numeric:tabular-nums}
-.roadname{font-size:24px;font-weight:600;line-height:1.12;letter-spacing:-.025em;margin-top:11px;font-family:var(--display)}
-.roadsub{font-family:var(--mono);font-size:12.5px;color:var(--ink2);margin-top:8px;line-height:1.6}
-.roadnext{margin-top:auto;padding-top:12px;border-top:1px solid var(--rule2);
-  font-family:var(--mono);font-size:12px;color:var(--ink2)}
-/* 大字下面那塊空白拿來放今天剩下的站，街上一眼掃完 */
-.roadrest{flex:1 1 auto;min-height:0;overflow-y:auto;margin-top:14px;
-  border-top:1px solid var(--rule2);padding-top:8px}
-.restrow{display:flex;gap:10px;align-items:baseline;padding:7px 0;
-  border-bottom:1px solid var(--rule2);text-decoration:none}
-.restrow:last-child{border-bottom:none}
-.restrow .t{font-family:var(--mono);font-size:13px;font-weight:600;
-  font-variant-numeric:tabular-nums;flex:0 0 auto}
-.restrow .n{flex:1;min-width:0;font-family:var(--display);font-size:14px;overflow:hidden;
-  text-overflow:ellipsis;white-space:nowrap}
-.restrow .g{font-family:var(--mono);font-size:10.5px;color:var(--ink3);flex:0 0 auto}
-.restrow.late .t{color:var(--vermilion)}
-.roadstrip{display:flex;gap:3px;align-items:flex-end;height:26px;align-self:end}
-.roadstrip i{flex:1;background:rgba(27,26,22,.14);height:10px;display:block}
-.roadstrip i.on{background:var(--accent);height:22px}
-.roadstrip i.past{background:rgba(27,26,22,.07)}
-
 /* ── 進場／旅程列表 ─────────────────────────────────────── */
-.gate{position:fixed;inset:0;z-index:70;background:var(--paper);overflow-y:auto;display:none;
-  padding:calc(env(safe-area-inset-top) + 18px) 13px calc(env(safe-area-inset-bottom) + 20px)}
+.gate{position:fixed;left:0;right:0;top:0;height:100dvh;z-index:70;background:var(--paper);overflow-y:auto;display:none;
+  padding:calc(env(safe-area-inset-top) + 18px) 13px calc(var(--sab) + 20px)}
 .gate.on{display:block}
 .brand{color:var(--ink2);font-family:var(--mono);letter-spacing:.3em;
   text-transform:uppercase;font-size:10.5px}
@@ -391,7 +367,7 @@ textarea.inp{font-family:var(--serif);font-size:15px;line-height:1.65;letter-spa
 .tripname span{display:block;font-family:var(--mono);font-size:10px;color:var(--ink2);
   letter-spacing:.03em;line-height:1.5;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
-.toast{position:fixed;left:50%;bottom:calc(var(--dock) + env(safe-area-inset-bottom) + 14px);
+.toast{position:fixed;left:50%;bottom:calc(var(--dock) + var(--sab) + 14px);
   transform:translateX(-50%);z-index:90;background:var(--ink);color:var(--leaf);
   font-family:var(--mono);font-size:12.5px;letter-spacing:.03em;padding:10px 16px;
   border:1px solid var(--ink);border-radius:999px;max-width:88vw;text-align:center;display:none}
@@ -1370,7 +1346,7 @@ function renderRail() {
 function leafHTML(r, i, flags) {
   const c = r.card, d = c.data;
   const cat = catBy(d.catId);
-  const cls = 'leaf' + (flags.top ? ' top' : '') + (flags.past ? ' past' : '');
+  const cls = 'leaf' + (flags.past ? ' past' : '');
   let meta = [];
   if (cat) meta.push(mark(cat.mark, 'sm') + '<span>' + esc(cat.name) + '</span>');
   const p = d.place || {};
@@ -1408,8 +1384,7 @@ function leafHTML(r, i, flags) {
       '</div>' +
       '<div class="lbody" data-open="' + c.id + '">' +
         '<div style="min-width:0;flex:1">' +
-          '<div class="lname">' + (esc(d.name) || '<span style="color:var(--ink3)">未命名</span>') +
-          (flags.top ? '<span class="nextlab">下一站</span>' : '') + '</div>' +
+          '<div class="lname">' + (esc(d.name) || '<span style="opacity:.6">未命名</span>') + '</div>' +
           (meta.length ? '<div class="lmeta">' + meta.join('<span class="sep">·</span>') + '</div>' : '') +
         '</div>' +
       '</div>' +
@@ -1506,10 +1481,7 @@ function renderPlate() {
           '距 ' + min2hm(firstPin.pinTarget) + ' ' + esc(firstPin.pinName) + '：' +
           (firstPin.pinDrift > 0 ? '已慢 ' + durTxt(firstPin.pinDrift) : '尚有餘裕 ' + durTxt(-firstPin.pinDrift)) +
           '</div>' : '') +
-        (sched.length > 1 ? '<div class="daybars">' + sched.map((r, k) =>
-          '<i class="' + (k === topIdx ? 'now' : '') + '" style="height:' +
-          clamp(Math.round((Number(r.card.data.stayMin) || 20) / 4), 4, 20) + 'px"></i>').join('') +
-          '</div>' : '') +
+        dayStrip(sched, d) +
         '<div class="startrow">' +
           '<button class="btn fill" id="btnStart">出發 ' + dayStart(d) + '</button>' +
           (dayUrl ? '<a class="btn fill" href="' + dayUrl + '" target="_blank" rel="noopener">Map ↗</a>' : '') +
@@ -1536,7 +1508,7 @@ function renderPlate() {
 
   sched.forEach((r, i) => {
     const past = d >= 0 && (d < ti || (isToday && topIdx >= 0 && i < topIdx) || (isToday && topIdx < 0));
-    h += leafHTML(r, i, { top: i === topIdx, past });
+    h += leafHTML(r, i, { past });
     if (i < sched.length - 1 && d >= 0) {
       const c = r.card, nx = sched[i + 1].card;
       const leg = c.data.leg || {};
@@ -1557,6 +1529,30 @@ function renderPlate() {
 
   plate.innerHTML = h;
   bindPlate();
+}
+
+/* 一天的形狀：橫軸是時間，每一站畫成一段膠囊，站與站之間的空白就是
+   移動與空檔。原本那排等寬長條只編碼了「停留多久」，看不出停在什麼時候、
+   也看不出兩小時的空檔卡在哪裡——那是不誠實的編碼。
+   取自 lieflat-charts 的 G1 Range Capsules（每個項目一個 min–max 區間），
+   因為頁首只有幾十像素高，改成共用一條時間軸而不是一站一格。 */
+function dayStrip(sched, d) {
+  if (sched.length < 2) return '';
+  const start = hm2min(dayStart(d));
+  const end = sched[sched.length - 1].depart;
+  const span = end - start;
+  if (!isFinite(span) || span <= 0) return '';
+  const pct = m => clamp((m - start) / span * 100, 0, 100);
+  const caps = sched.map(r => {
+    const x = pct(r.arrive), w = Math.max(1.4, pct(r.depart) - x);
+    return '<i style="left:' + x.toFixed(2) + '%;width:' + w.toFixed(2) + '%"></i>';
+  }).join('');
+  const pins = sched.filter(r => r.pin != null)
+    .map(r => '<b style="left:' + pct(r.arrive).toFixed(2) + '%"></b>').join('');
+  return '<div class="strip">' + caps + pins + '</div>' +
+    '<div class="striplab"><span>' + min2hm(start) + '</span>' +
+    '<span>全程 ' + durTxt(span) + '</span>' +
+    '<span>' + min2hm(end) + '</span></div>';
 }
 
 function renderSync() {
