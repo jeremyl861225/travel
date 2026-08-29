@@ -274,8 +274,15 @@ a{color:inherit}
 .leg b{font-weight:600;font-size:11.5px}
 
 /* ── 頁首那一頁（板上不印字，所以標題也住在頁上） ─────────── */
-.head{margin:0 12px 10px 0;background:var(--leaf);border:1px solid var(--rule2);
-  border-radius:var(--r);overflow:hidden;border-color:var(--rule)}
+/* 日首不畫框。它跟下面的卡片本來就不是同一種東西——
+   卡片是行程，這裡是這一天的儀表；框起來反而讓它看起來也是一張卡。
+   底下一條細線就夠把它跟第一張卡分開。 */
+.head{margin:0 12px 10px 0;background:transparent;overflow:hidden;
+  border:none;border-bottom:1px solid var(--rule2);border-radius:0}
+.headtop{border-bottom:none;padding-left:0}
+.headbody{padding-left:0;padding-right:4px}
+.headmar{padding-left:0}
+.startrow{padding-left:0}
 /* 參考站那條迷你長條圖：一根柱子是一站，高度是停留時間 */
 /* 一天的形狀：軌是整天的跨度，膠囊是待在某個地方的時間，
    膠囊之間的空白就是移動與空檔；直線是釘選的固定時刻。 */
@@ -302,8 +309,10 @@ a{color:inherit}
   -webkit-appearance:none; appearance:none}
 .backb .mark{width:16px;height:16px;stroke-width:2}
 .backb:active{background:none;color:var(--ink)}
-.trip{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;
-  color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+/* 旅程名走標題字（明體）。原本是 Avenir Next 全大寫加字距——
+   那對拉丁有效，中文不會變大寫，只剩被拉開的字距，看起來像沒設計過。 */
+.trip{font-family:var(--display);font-size:15px;font-weight:600;letter-spacing:-.01em;
+  color:var(--ink);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
 .headmain{display:grid;grid-template-columns:70px 1fr;align-items:start}
 /* DAY 那一欄不再是色塊，改成超粗的字直接承載當日色。
    色用 --accent-line（當日色壓到紙上讀得動的那一階），不是 --accent 原色——
@@ -630,7 +639,7 @@ let HUES = hueSet(6);                    // openTrip() 會依實際天數重算
 /* 建置代號。手機上「改了但看起來沒變」十之八九是舊快取，
    在設定裡把這個字串印出來，一眼就知道手上這份是不是新的。
    改版時跟著 sw.js 的 CACHE 一起跳號。 */
-const BUILD = '2026-08-30 · v18';
+const BUILD = '2026-08-30 · v19';
 const VERMILION = '#D62D14';
 /* 已經過去的分頁用的極淺灰。比紙略深一點點，形狀還在但退到背景去。 */
 const PAST_TAB = '#D9D6CE';
@@ -1788,7 +1797,7 @@ function detailHTML(c, r) {
       p.hoursText.map((s, i) => i === idx ? '' : '<div>' + esc(s) + '</div>').join('') +
       '</div></div></div>';
   }
-  if (p.address || p.addressJa || p.phone || p.website) {
+  if (p.address || p.addressJa || p.phone || p.website || d.mapcode) {
     h += '<div class="blk"><span class="lab">地點</span><div>';
     /* 日文地址擺第一：那是唯一能貼進日規導航、或直接拿給司機看的形式。
        羅馬字地址擺第二，給看不懂漢字的旅伴用。 */
@@ -1805,6 +1814,10 @@ function detailHTML(c, r) {
       h += '<div class="addr"><span class="addrlab">名</span>' +
            '<span class="addrtxt">' + esc(p.nameJa) + '</span>' +
            '<button class="btn addrcopy" data-copy="' + esc(p.nameJa) + '">複製</button></div>';
+    if (d.mapcode)
+      h += '<div class="addr"><span class="addrlab">M</span>' +
+           '<span class="addrtxt">' + esc(d.mapcode) + '</span>' +
+           '<button class="btn addrcopy" data-copy="' + esc(d.mapcode) + '">複製</button></div>';
     if (p.phone)
       h += '<div class="addr"><span class="addrlab">話</span>' +
            '<a class="linkline addrtxt" href="tel:' + esc(p.phone.replace(/\s/g, '')) + '">' +
@@ -1953,6 +1966,11 @@ function renderPlate() {
       const leg = r.leg || {};
       const m = modeBy(leg.mode || S.trip.defaultMode);
       const gap = sched[i + 1].wait;
+      /* 兩站座標完全相同時，Google 會誠實回 0 分——看起來卻像功能壞了。
+         把原因寫出來：不是算不出來，是這兩張卡指到同一個點。 */
+      const pa = c.data.place, pb = nx.data.place;
+      const samePoint = pa && pb && pa.lat != null && pb.lat != null &&
+                        pa.lat === pb.lat && pa.lng === pb.lng;
       const body = mark(m.mark, 'sm') + (leg.min == null ? '<span>路程未知</span>' :
         (leg.est ? '<span class="est">約</span>' : '') +
         '<b>' + leg.min + ' 分</b>' + (leg.meters ? '<span>' + dist(leg.meters) + '</span>' : '')) +
@@ -1960,7 +1978,8 @@ function renderPlate() {
         /* 連開九十分鐘以上要休息。行程表本來完全沒有休息的概念，
            而這趟最長的一段是九十九分鐘。 */
         ((leg.min != null && leg.min >= 90 && (leg.mode || S.trip.defaultMode) === 'drive')
-          ? '<span class="longdrive">連續開車，中途找地方休息</span>' : '');
+          ? '<span class="longdrive">連續開車，中途找地方休息</span>' : '') +
+        (samePoint ? '<span class="longdrive">兩張卡是同一個座標</span>' : '');
       /* 平常點下去就是開 Google 路線；編輯模式才是改這一段的數字與交通方式。 */
       h += '<div class="hinge">' + (S.edit
         ? '<button class="leg' + (leg.min == null ? ' miss' : '') + '" data-leg="' + c.id + '">' +
@@ -2934,6 +2953,11 @@ function sheetEdit(c) {
     '<div class="fld stack"><span class="lab">最後入場（閉館前幾分鐘，沒有就留 0）</span>' +
     '<input class="inp" id="eLast" type="number" min="0" max="180" step="5" value="' +
     (Number(d.lastEntry) || 0) + '"></div>' +
+    /* マップコード是 DENSO 的專有規格，沒有公開 API 可以算，只能手填。
+       國際標準的那個 Mapcode 是完全不同的東西，日規導航不吃。 */
+    '<div class="fld stack"><span class="lab">マップコード（日規導航用，要自己查來貼）</span>' +
+    '<input class="inp" id="eMapcode" value="' + esc(d.mapcode || '') +
+    '" placeholder="例：123 456 789*12"></div>' +
     '<div class="fld stack"><span class="lab">介紹</span>' +
     '<textarea class="inp" id="eNote">' + esc(d.note || '') + '</textarea></div>' +
     '<div class="fld stack"><span class="lab">網址連結（一行一個，可用「名稱 網址」）</span>' +
@@ -2987,6 +3011,7 @@ function sheetEdit(c) {
         d.catId = cat;
         d.stayMin = clamp(parseInt($('#eStay').value, 10) || 0, 0, 1440);
         d.lastEntry = clamp(parseInt($('#eLast').value, 10) || 0, 0, 180);
+        d.mapcode = $('#eMapcode').value.trim();
         d.pinTime = $('#ePin').value || '';
         d.note = $('#eNote').value;
         d.links = $('#eLinks').value.split('\n').map(s => s.trim()).filter(Boolean).map(s => {
