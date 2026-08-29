@@ -136,5 +136,17 @@ for (const x of src.matchAll(/(?:^|[^.\w$])([A-Za-z_$][\w$]*)\s*\(/g)) called.ad
 const undef = [...called].filter(f => !defined.has(f) && !KEYWORDS.has(f) && !BUILTINS.has(f));
 if (undef.length) { bad++; console.error('✗ 呼叫了但找不到定義：' + undef.join(', ')); }
 
+/* 只查「被呼叫的函式」漏掉了一整類 bug：常數被整段替換時一起刪掉，
+   引用處還在，語法也合法，直到執行到那一行才 ReferenceError。
+   （2026-08-30 真的中過：換色票時把 const BUILD 一起切掉，設定頁整個炸。）
+   全大寫的識別字幾乎都是模組常數，用它當範圍很安全，不會誤報區域變數。 */
+const used = new Set();
+/* 後面接冒號的是物件的鍵（例如錯誤訊息表的 NO_SA_KEY:），不是引用，要跳過。 */
+for (const x of src.matchAll(/(?:^|[^.\w$'"])([A-Z][A-Z0-9_]{2,})\b(\s*:)?/g))
+  if (!x[2]) used.add(x[1]);
+const CAPS_OK = new Set(['NaN','URL','JSON','POST','GET','DELETE','OPTIONS','HTTP','API','UTF','SVG','TC','ID']);
+const undefConst = [...used].filter(k => !defined.has(k) && !CAPS_OK.has(k));
+if (undefConst.length) { bad++; console.error('✗ 用到但找不到宣告的常數：' + undefConst.join(', ')); }
+
 console.log(bad ? `\n✗ ${bad} 個問題` : '\n✓ 通過');
 process.exit(bad ? 1 : 0);

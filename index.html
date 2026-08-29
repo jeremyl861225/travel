@@ -619,6 +619,10 @@ function hueSet(days) {
   return chosen.map(i => RAMP[i]);
 }
 let HUES = hueSet(6);                    // openTrip() 會依實際天數重算
+/* 建置代號。手機上「改了但看起來沒變」十之八九是舊快取，
+   在設定裡把這個字串印出來，一眼就知道手上這份是不是新的。
+   改版時跟著 sw.js 的 CACHE 一起跳號。 */
+const BUILD = '2026-08-30 · v17';
 const VERMILION = '#D62D14';
 /* 已經過去的分頁用的極淺灰。比紙略深一點點，形狀還在但退到背景去。 */
 const PAST_TAB = '#D9D6CE';
@@ -3159,26 +3163,7 @@ function sheetTrip() {
     /* 版本與視窗實測值。前者用來確認手機拿到的是不是新版，
        後者是頁底對不齊時唯一能問出真相的數字。 */
     '<p class="hint" style="margin-top:16px;text-align:center;opacity:.7">' +
-    BUILD + ' · ' + (STANDALONE ? '獨立' : '瀏覽器') +
-    ' · vh ' + Math.round(parseFloat(getComputedStyle(document.documentElement)
-      .getPropertyValue('--vh')) || 0) +
-    ' / ih ' + window.innerHeight +
-    ' / vv ' + Math.round(window.visualViewport ? window.visualViewport.height : 0) +
-    ' / sab ' + getComputedStyle(document.documentElement)
-      .getPropertyValue('--sab').trim() +
-    ' / scr ' + window.screen.height + ' / dpr ' + window.devicePixelRatio + '</p>' +
-    /* 真正要問的是幾何：操作列的底有沒有貼到視窗的底。
-       貼到了就代表剩下的那條在網頁視窗之外，網頁畫不到，
-       只能靠 viewport-fit 或重新加到主畫面來解決。 */
-    (() => {
-      const a = $('#app'), k = $('#dock');
-      if (!a || !k) return '';
-      const ar = a.getBoundingClientRect(), kr = k.getBoundingClientRect();
-      return '<p class="hint" style="text-align:center;opacity:.7">app ' +
-        Math.round(ar.top) + '–' + Math.round(ar.bottom) + ' · dock ' +
-        Math.round(kr.top) + '–' + Math.round(kr.bottom) + ' · 差 ' +
-        Math.round(window.innerHeight - kr.bottom) + '</p>';
-    })(),
+    BUILD + ' · ' + (STANDALONE ? '獨立' : '瀏覽器') + '</p>',
 
     () => {
       let m = t.defaultMode || 'drive';
