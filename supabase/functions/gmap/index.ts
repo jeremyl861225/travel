@@ -11,11 +11,18 @@
 //
 //  需要的密鑰（Supabase → Edge Functions → Secrets）：
 //    GOOGLE_MAPS_API_KEY   ← 你自己申請的，設好 API 限制與每日上限
+//    GOOGLE_SA_KEY         ← 選用。服務帳戶的 JSON 金鑰全文，只有
+//                            Route Optimization API 需要（它不收 API key）。
+//                            沒設的話「排順路」會用本地解算器，功能不會消失。
 //  以下兩個是 Supabase 自動注入的，不用自己設：
 //    SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY
 // =============================================================
 
 const GOOGLE_KEY = Deno.env.get("GOOGLE_MAPS_API_KEY") ?? "";
+/* Route Optimization API 不吃 API key，只吃 OAuth（scope cloud-platform
+   ＋ IAM routeoptimization.locations.use）。所以那一支要另外放一份
+   服務帳戶的 JSON 金鑰；沒設就回 NO_SA_KEY，前端退回本地解算器。 */
+const GOOGLE_SA = Deno.env.get("GOOGLE_SA_KEY") ?? "";
 const SB_URL = Deno.env.get("SUPABASE_URL") ?? "";
 const SB_SERVICE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
 
@@ -253,6 +260,221 @@ async function computeRoute(
   return { seconds: Number.isFinite(secs) ? secs : null, meters: route.distanceMeters ?? null };
 }
 
+// ---------- Route Matrix ----------
+/* 兩兩之間的真實車程。排順路本來是拿直線距離乘一個繞路係數在算，
+   山路一律低估——南東北那天實測差了一小時四十八分。
+   一次請求就能拿回 N×N，比逐段打 computeRoutes 便宜也快得多。 */
+async function computeMatrix(
+  points: Array<{ lat: number; lng: number }>,
+  mode: string,
+  departAt?: string,
+) {
+  const travelMode = MODES[mode] ?? "DRIVE";
+  const wp = points.map((p) => ({
+    waypoint: { location: { latLng: { latitude: p.lat, longitude: p.lng } } },
+  }));
+  const body: Record<string, unknown> = {
+    origins: wp,
+    destinations: wp,
+    travelMode,
+    languageCode: "zh-TW",
+    units: "METRIC",
+  };
+  if (departAt) body.departureTime = departAt;
+  if (travelMode === "DRIVE") body.routingPreference = departAt ? "TRAFFIC_AWARE" : "TRAFFIC_UNAWARE";
+
+  const r = await fetch("https://routes.googleapis.com/distanceMatrix/v2:computeRouteMatrix", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Goog-Api-Key": GOOGLE_KEY,
+      "X-Goog-FieldMask": "originIndex,destinationIndex,duration,distanceMeters,condition",
+    },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error(`MATRIX_HTTP_${r.status}`);
+  const rows = await r.json();
+  const n = points.length;
+  const sec: Array<Array<number | null>> = Array.from({ length: n }, () => Array(n).fill(null));
+  const met: Array<Array<number | null>> = Array.from({ length: n }, () => Array(n).fill(null));
+  for (const e of (Array.isArray(rows) ? rows : [])) {
+    const i = e.originIndex ?? -1, j = e.destinationIndex ?? -1;
+    if (i < 0 || j < 0) continue;
+    // condition 不是 ROUTE_EXISTS 就是走不通（例如中間隔著海）。留 null，
+    // 前端會退回直線估計，而不是拿 0 當成「不用時間」。
+    if (e.condition && e.condition !== "ROUTE_EXISTS") continue;
+    const d = typeof e.duration === "string" ? parseInt(e.duration, 10) : null;
+    sec[i][j] = Number.isFinite(d) ? d : null;
+    met[i][j] = e.distanceMeters ?? null;
+  }
+  return { seconds: sec, meters: met };
+}
+
+// ---------- Places：自動完成與周邊搜尋 ----------
+async function placeAutocomplete(
+  input: string,
+  lang: string,
+  bias?: { lat: number; lng: number; radius?: number },
+  sessionToken?: string,
+) {
+  const body: Record<string, unknown> = { input, languageCode: lang };
+  // locationBias 只是「偏好」不是「限制」——旅程在日本，但使用者仍可能
+  // 想加一個回程轉機的機場，用 restriction 會直接查不到。
+  if (bias) {
+    body.locationBias = {
+      circle: {
+        center: { latitude: bias.lat, longitude: bias.lng },
+        radius: Math.min(50000, bias.radius ?? 50000),
+      },
+    };
+  }
+  if (sessionToken) body.sessionToken = sessionToken;
+  const r = await fetch("https://places.googleapis.com/v1/places:autocomplete", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Goog-Api-Key": GOOGLE_KEY,
+      "X-Goog-FieldMask": [
+        "suggestions.placePrediction.placeId",
+        "suggestions.placePrediction.text.text",
+        "suggestions.placePrediction.structuredFormat.mainText.text",
+        "suggestions.placePrediction.structuredFormat.secondaryText.text",
+      ].join(","),
+    },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error(`AC_HTTP_${r.status}`);
+  const j = await r.json();
+  return (j?.suggestions ?? [])
+    .map((s: Record<string, any>) => s.placePrediction)
+    .filter(Boolean)
+    .map((p: Record<string, any>) => ({
+      placeId: p.placeId ?? null,
+      text: p.text?.text ?? "",
+      main: p.structuredFormat?.mainText?.text ?? p.text?.text ?? "",
+      sub: p.structuredFormat?.secondaryText?.text ?? "",
+    }));
+}
+
+async function placeNearby(
+  center: { lat: number; lng: number },
+  types: string[],
+  radius: number,
+  lang: string,
+  max: number,
+) {
+  const body: Record<string, unknown> = {
+    maxResultCount: Math.min(20, Math.max(1, max)),
+    rankPreference: "POPULARITY",
+    languageCode: lang,
+    locationRestriction: {
+      circle: {
+        center: { latitude: center.lat, longitude: center.lng },
+        radius: Math.min(50000, Math.max(1, radius)),
+      },
+    },
+  };
+  if (types.length) body.includedTypes = types.slice(0, 5);
+  const r = await fetch("https://places.googleapis.com/v1/places:searchNearby", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Goog-Api-Key": GOOGLE_KEY,
+      // rating / userRatingCount 會把這支推到 Enterprise 級（每月 1,000 次免費）。
+      // 挑候選沒有星等等於沒得挑，所以留著；前端有次數上限。
+      "X-Goog-FieldMask": [
+        "places.id", "places.displayName", "places.location",
+        "places.rating", "places.userRatingCount",
+        "places.primaryTypeDisplayName", "places.formattedAddress",
+      ].join(","),
+    },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) throw new Error(`NEARBY_HTTP_${r.status}`);
+  const j = await r.json();
+  return (j?.places ?? []).map((p: Record<string, any>) => ({
+    placeId: p.id ?? null,
+    name: p.displayName?.text ?? "",
+    address: p.formattedAddress ?? null,
+    lat: p.location?.latitude ?? null,
+    lng: p.location?.longitude ?? null,
+    rating: p.rating ?? null,
+    ratingCount: p.userRatingCount ?? null,
+    type: p.primaryTypeDisplayName?.text ?? null,
+  }));
+}
+
+// ---------- Route Optimization（要 OAuth，不能用 API key） ----------
+const b64url = (buf: ArrayBuffer | Uint8Array) => {
+  const b = buf instanceof Uint8Array ? buf : new Uint8Array(buf);
+  let s = "";
+  for (let i = 0; i < b.length; i++) s += String.fromCharCode(b[i]);
+  return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+};
+function pemToPkcs8(pem: string): ArrayBuffer {
+  const b64 = pem.replace(/-----[^-]+-----/g, "").replace(/\s+/g, "");
+  const bin = atob(b64);
+  const out = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out.buffer;
+}
+/* 存取權杖有一小時效期。Edge Function 的執行個體會被重用，
+   放在模組層就等於一份快取，省掉每次呼叫多一趟 token 交換。 */
+let saToken: { value: string; exp: number } | null = null;
+async function saAccessToken(): Promise<{ token: string; projectId: string }> {
+  const key = JSON.parse(GOOGLE_SA) as Record<string, string>;
+  const projectId = key.project_id;
+  const now = Math.floor(Date.now() / 1000);
+  if (saToken && saToken.exp > now + 60) return { token: saToken.value, projectId };
+
+  const header = b64url(new TextEncoder().encode(JSON.stringify({ alg: "RS256", typ: "JWT" })));
+  const claim = b64url(new TextEncoder().encode(JSON.stringify({
+    iss: key.client_email,
+    scope: "https://www.googleapis.com/auth/cloud-platform",
+    aud: "https://oauth2.googleapis.com/token",
+    iat: now,
+    exp: now + 3600,
+  })));
+  const cryptoKey = await crypto.subtle.importKey(
+    "pkcs8", pemToPkcs8(key.private_key),
+    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["sign"],
+  );
+  const sig = await crypto.subtle.sign(
+    "RSASSA-PKCS1-v1_5", cryptoKey, new TextEncoder().encode(`${header}.${claim}`),
+  );
+  const jwt = `${header}.${claim}.${b64url(sig)}`;
+
+  const r = await fetch("https://oauth2.googleapis.com/token", {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "urn:ietf:params:oauth:grant-type:jwt-bearer",
+      assertion: jwt,
+    }),
+  });
+  if (!r.ok) throw new Error(`SA_TOKEN_HTTP_${r.status}`);
+  const j = await r.json();
+  saToken = { value: j.access_token, exp: now + (j.expires_in ?? 3600) };
+  return { token: j.access_token, projectId };
+}
+
+async function optimizeTours(model: Record<string, unknown>) {
+  const { token, projectId } = await saAccessToken();
+  const r = await fetch(
+    `https://routeoptimization.googleapis.com/v1/projects/${projectId}:optimizeTours`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify(model),
+    },
+  );
+  if (!r.ok) {
+    const detail = await r.text().catch(() => "");
+    throw new Error(`OPT_HTTP_${r.status}:${detail.slice(0, 300)}`);
+  }
+  return await r.json();
+}
+
 // ---------- 入口 ----------
 Deno.serve(async (req: Request) => {
   const origin = req.headers.get("origin");
@@ -325,6 +547,51 @@ Deno.serve(async (req: Request) => {
         legs.map((l) => computeRoute(l.origin, l.destination, l.mode ?? "drive", l.departAt)),
       );
       return json({ legs: out }, 200, origin);
+    }
+
+    if (op === "matrix") {
+      const pts = (body.points ?? []) as Array<{ lat: number; lng: number }>;
+      // 14 站＝196 個元素。TRAFFIC_AWARE 的上限是 625，這裡壓低是為了額度，
+      // 不是為了限制；一天十四站以上本來就不是行程了。
+      if (pts.length < 2) return json({ error: "TOO_FEW_POINTS" }, 400, origin);
+      if (pts.length > 14) return json({ error: "TOO_MANY_POINTS" }, 400, origin);
+      const m = await computeMatrix(pts, String(body.mode ?? "drive"), body.departAt as string | undefined);
+      return json(m, 200, origin);
+    }
+
+    if (op === "autocomplete") {
+      const input = String(body.input ?? "").trim();
+      if (input.length < 1) return json({ suggestions: [] }, 200, origin);
+      const out = await placeAutocomplete(
+        input, lang,
+        body.bias as { lat: number; lng: number; radius?: number } | undefined,
+        body.sessionToken as string | undefined,
+      );
+      return json({ suggestions: out }, 200, origin);
+    }
+
+    if (op === "nearby") {
+      const c = body.center as { lat: number; lng: number };
+      if (!c || c.lat == null) return json({ error: "MISSING_CENTER" }, 400, origin);
+      const out = await placeNearby(
+        c,
+        (body.types ?? []) as string[],
+        Number(body.radius ?? 1500),
+        lang,
+        Number(body.max ?? 12),
+      );
+      return json({ places: out }, 200, origin);
+    }
+
+    if (op === "optimize") {
+      if (!GOOGLE_SA) return json({ error: "NO_SA_KEY" }, 503, origin);
+      const model = body.model as Record<string, unknown>;
+      if (!model) return json({ error: "MISSING_MODEL" }, 400, origin);
+      const out = await optimizeTours({
+        model,
+        considerRoadTraffic: body.considerRoadTraffic !== false,
+      });
+      return json(out, 200, origin);
     }
 
     return json({ error: "UNKNOWN_OP" }, 400, origin);

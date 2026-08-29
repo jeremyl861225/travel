@@ -267,12 +267,17 @@ a{color:inherit}
 .backb:active{background:none;color:var(--ink)}
 .trip{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;
   color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
-.headmain{display:grid;grid-template-columns:76px 1fr;align-items:start}
-/* DAY 那一欄就是當日色的實心塊——參考圖用實心方磚承載顏色的手法 */
-.headmar{padding:9px 8px 11px 10px;background:var(--accent);color:var(--accent-ink);
-  border-radius:0 0 8px 0;box-shadow:inset -1px -1px 0 var(--accent-edge)}
-.dnum{font-family:var(--mono);font-size:11px;letter-spacing:.1em;opacity:.8}
-.dbig{font-size:27px;font-weight:600;line-height:.88;letter-spacing:-.045em;margin-top:2px;font-family:var(--display)}
+.headmain{display:grid;grid-template-columns:70px 1fr;align-items:start}
+/* DAY 那一欄不再是色塊，改成超粗的字直接承載當日色。
+   色用 --accent-line（當日色壓到紙上讀得動的那一階），不是 --accent 原色——
+   鼠尾草、橄欖金對紙只有 2.7:1，直接拿來當字色會糊掉。
+   「超粗」不能靠 font-weight：中文沒有 700 以上的字面，寫上去是 iOS 演算法
+   假造的，邊緣會爛。改用 text-stroke 沿著字的外框加一圈，粗得乾淨。 */
+.headmar{padding:10px 6px 11px 10px;color:var(--accent-line)}
+.dnum{font-family:var(--display);font-size:12px;letter-spacing:.16em;font-weight:600;
+  -webkit-text-stroke:.35px currentColor}
+.dbig{font-size:42px;font-weight:600;line-height:.86;letter-spacing:-.05em;margin-top:1px;
+  font-family:var(--display);-webkit-text-stroke:.9px currentColor}
 .headbody{padding:9px 12px 11px}
 .ddate{font-size:15.5px;font-weight:600;letter-spacing:-.015em;line-height:1.2;font-family:var(--display)}
 .dsub{font-family:var(--mono);font-size:10.5px;color:var(--ink2);margin-top:3px;letter-spacing:.02em;line-height:1.42}
@@ -531,7 +536,7 @@ const HUES = [
 /* 建置代號。手機上「改了但看起來沒變」十之八九是舊快取，
    在設定裡把這個字串印出來，一眼就知道手上這份是不是新的。
    改版時跟著 sw.js 的 CACHE 一起跳號。 */
-const BUILD = '2026-08-29 · v7';
+const BUILD = '2026-08-29 · v8';
 const VERMILION = '#D62D14';
 const MARKS = ['nature','heritage','shop','play','food','stay','transit','view','hot','pin'];
 const DEFAULT_CATS = [
