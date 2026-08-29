@@ -1,0 +1,20 @@
+{
+  "note": "colormind.io 直接回傳的原始色票，未過濾未重排。這是分組任務的原料，別重抓一批不一樣的。",
+  "fetched": "2026-08-29",
+  "endpoint": "http://colormind.io/api/  (HTTP only，沒有 HTTPS；build 期抓，不要在前端呼叫)",
+  "models": ["ui", "default", "maple_story", "flame_photography", "only_god_forgives", "contempt_1963"],
+  "palettes": [
+    { "id": "A", "model": "ui",                "hues": ["#F5F6F6","#B7A84B","#8F879E","#A44357","#333848"] },
+    { "id": "B", "model": "ui",                "hues": ["#FBF9F9","#C5B9B1","#CC983F","#B99992","#5B524E"] },
+    { "id": "C", "model": "default",           "hues": ["#304750","#45873A","#BEB737","#A4EF3E","#92DC84"] },
+    { "id": "D", "model": "default",           "hues": ["#0D151E","#225F65","#A3C98C","#EABD50","#FC4D06"] },
+    { "id": "E", "model": "maple_story",       "hues": ["#D8E7E9","#6D2655","#0E8718","#3DD21C","#83E176"] },
+    { "id": "F", "model": "maple_story",       "hues": ["#9D914A","#342F32","#597A66","#909D7E","#E4E5E3"] },
+    { "id": "G", "model": "flame_photography", "hues": ["#6A3D4F","#806386","#907DCE","#8A8EEC","#2E41A1"] },
+    { "id": "H", "model": "flame_photography", "hues": ["#181524","#1A746B","#7693B9","#A88B72","#E73A31"] },
+    { "id": "I", "model": "only_god_forgives", "hues": ["#6B4C51","#251514","#673A31","#8A8071","#C4B5B6"] },
+    { "id": "J", "model": "only_god_forgives", "hues": ["#7C2B21","#241B16","#6C241E","#857063","#AFB5B2"] },
+    { "id": "K", "model": "contempt_1963",     "hues": ["#A5B386","#919F7D","#AC9665","#4A3E23","#282E1A"] },
+    { "id": "L", "model": "contempt_1963",     "hues": ["#7D8A8A","#2B1C12","#5B4D2C","#BF7857","#C5C3A2"] }
+  ]
+}
