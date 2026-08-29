@@ -650,7 +650,7 @@ let HUES = hueSet(6);                    // openTrip() 會依實際天數重算
 /* 建置代號。手機上「改了但看起來沒變」十之八九是舊快取，
    在設定裡把這個字串印出來，一眼就知道手上這份是不是新的。
    改版時跟著 sw.js 的 CACHE 一起跳號。 */
-const BUILD = '2026-08-30 · v22';
+const BUILD = '2026-08-30 · v23';
 const VERMILION = '#D62D14';
 /* 已經過去的分頁用的極淺灰。比紙略深一點點，形狀還在但退到背景去。 */
 const PAST_TAB = '#D9D6CE';
@@ -1732,9 +1732,12 @@ function leafHTML(r, i, flags) {
   if (p.rating != null) meta.push('★ ' + p.rating + (p.ratingCount ? ' (' + p.ratingCount + ')' : ''));
   if (r.hours && r.hours.unknown === false && !r.hours.open) meta.push('到時沒開');
   /* 抵達那個小時的降雨機率。三成以下不顯示——那是雜訊，不是資訊。
-     戶外行程（自然、展望）才提示，室內下不下雨無所謂。 */
+     判準是「排除室內」而不是「列舉戶外」：日本的古蹟多半在露天的境內，
+     觀光船更是整段淋雨。原本只給自然與展望，結果 96% 降雨的那天
+     瑞巖寺、五大堂、松島觀光船全都不提醒——那正是最需要提醒的三個。 */
+  const INDOOR = { shop:1, food:1, stay:1 };
   const wh = S.weatherH[c.dayIndex];
-  if (wh && (d.catId === 'nature' || d.catId === 'view' || !d.catId)) {
+  if (wh && !INDOOR[d.catId]) {
     const hh = wh[Math.floor((r.arrive % 1440) / 60)];
     if (hh && hh.pop != null && hh.pop >= 30)
       meta.push('<span class="rainchip">☂ ' + hh.pop + '%</span>');
