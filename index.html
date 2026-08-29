@@ -339,9 +339,13 @@ a{color:inherit}
 .dwx{margin-left:auto;font-family:var(--mono);font-size:10.5px;font-weight:500;
   letter-spacing:.02em;color:var(--ink3);white-space:nowrap;flex:0 0 auto}
 /* 「現在」：整個日首最重的一行，前面那道朱紅就是時間軸上那根線。 */
+/* flex 只能有兩個項目：朱紅記號、以及包成一整塊的文字。
+   讓行內片段各自當 flex 項目的話，「應該在／瑞巖寺／，還有 34 分」
+   會被拆成三塊各自換行——實際畫面上就是散掉的。 */
 .dnow{display:flex;align-items:baseline;gap:6px;margin-top:4px;
   font-family:var(--mono);font-size:12px;line-height:1.45;color:var(--ink)}
-.dnow b{font-family:var(--serif);font-size:13px;font-weight:600}
+.dnow > span{min-width:0}
+.dnow b{font-family:var(--serif);font-size:13px;font-weight:600;white-space:nowrap}
 .nowtick{flex:0 0 auto;width:2px;height:11px;background:var(--vermilion);
   border-radius:1px;transform:translateY(1px)}
 .ddate .num{font-family:var(--mono);font-size:17px;letter-spacing:-.02em}
@@ -369,7 +373,10 @@ a{color:inherit}
 .btn.fill:active{background:var(--btn);color:var(--btn-ink);
   box-shadow:inset 0 0 0 2px var(--rule1)}
 /* 主要動作用當日板色，跟參考站的實心黃鍵同一手 */
-.btn.fill{background:var(--btn);color:var(--btn-ink);border-color:var(--rule1);font-weight:600}
+/* 填色鍵不畫框：填色本身就已經定義了形狀，再加一圈深色線只是雜訊。
+   邊框留著但透明——按下去的回饋是那道 inset 的粗線（見 .btn.fill:active），
+   把 border 整個拿掉會讓按壓時的尺寸跳動。 */
+.btn.fill{background:var(--btn);color:var(--btn-ink);border-color:transparent;font-weight:600}
 .btn.wide{width:100%}
 .btn[disabled]{opacity:.4}
 .inp{
@@ -660,7 +667,7 @@ let HUES = hueSet(6);                    // openTrip() 會依實際天數重算
 /* 建置代號。手機上「改了但看起來沒變」十之八九是舊快取，
    在設定裡把這個字串印出來，一眼就知道手上這份是不是新的。
    改版時跟著 sw.js 的 CACHE 一起跳號。 */
-const BUILD = '2026-08-30 · v24';
+const BUILD = '2026-08-30 · v25';
 const VERMILION = '#D62D14';
 /* 已經過去的分頁用的極淺灰。比紙略深一點點，形狀還在但退到背景去。 */
 const PAST_TAB = '#D9D6CE';
@@ -1989,14 +1996,14 @@ function renderPlate() {
              字色走 --ink（整頁最重），因為這是唯一會自己動、也唯一即時的一行。
              警告色留給公休與撲空，不要兩件事都染紅。 */
           const tick = '<i class="nowtick"></i>';
-          if (at) return '<div class="dnow">' + tick + '現在 ' + min2hm(n) +
+          if (at) return '<div class="dnow">' + tick + '<span>現在 ' + min2hm(n) +
             '　應該在 <b>' + esc(at.card.data.name || '') + '</b>，還有 ' +
-            durTxt(at.depart - n) + '</div>';
+            durTxt(at.depart - n) + '</span></div>';
           const nx = sched.find(x => x.arrive > n);
-          if (nx) return '<div class="dnow">' + tick + '現在 ' + min2hm(n) +
+          if (nx) return '<div class="dnow">' + tick + '<span>現在 ' + min2hm(n) +
             '　在往 <b>' + esc(nx.card.data.name || '') + '</b> 的路上，' +
-            durTxt(nx.arrive - n) + '後到</div>';
-          return '<div class="dnow">' + tick + '今天的行程已經結束</div>';
+            durTxt(nx.arrive - n) + '後到</span></div>';
+          return '<div class="dnow">' + tick + '<span>今天的行程已經結束</span></div>';
         })() +
         (() => {
           const shut = sched.filter(x => x.hours && x.hours.unknown === false && !x.hours.open).length;
