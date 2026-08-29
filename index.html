@@ -969,29 +969,72 @@ function gmapMsg(e) {
 
 /* 自動補上還沒算過的路程。只算「兩端都有座標、而且還沒有結果」的段，
    順序改了才會失效重算——每一段都是一次 Routes 呼叫，不亂花。 */
+/* 這趟旅程的時區。從匯入或手建的卡片不會有 utcOffsetMinutes，
+   而拿手機的時區去換算會差一小時（台灣 +8、日本 +9），尖峰離峰剛好判反。
+   同一趟旅程幾乎都在同一個時區，所以借用任何一張問過 Google 的卡片就夠了。 */
+function tripOffset() {
+  const all = S.cards || [];
+  for (const c of all) {
+    const p = c.data && c.data.place;
+    if (p && p.utcOffsetMinutes != null) return p.utcOffsetMinutes;
+  }
+  return -(new Date().getTimezoneOffset());
+}
+
+/* 出發時刻交給 Routes API，開車才算得出那個時段的路況
+   （edge function 收到 departureTime 就會把 routingPreference 開成 TRAFFIC_AWARE）。
+   時區一定要用「地點自己的」utcOffsetMinutes：手機在台灣是 +8、日本是 +9，
+   拿手機時區去換算會整整差一小時，尖峰離峰剛好判反。
+   Routes API 不收過去的時間（TRANSIT 以外），過期就回 null 退回無路況模式。 */
+function departISO(d, minutes, place) {
+  if (minutes == null || !isFinite(minutes)) return null;
+  let m = Math.round(minutes), extra = 0;
+  while (m >= 1440) { m -= 1440; extra++; }        // 跨日的行程（深夜場）
+  if (m < 0) return null;
+  const ymd = dateAdd(dayDate(d), extra);
+  const off = (place && place.utcOffsetMinutes != null) ? place.utcOffsetMinutes : tripOffset();
+  const sign = off < 0 ? '-' : '+', ao = Math.abs(off);
+  const iso = ymd + 'T' + pad2(Math.floor(m / 60)) + ':' + pad2(m % 60) + ':00'
+            + sign + pad2(Math.floor(ao / 60)) + ':' + pad2(ao % 60);
+  return new Date(iso).getTime() > Date.now() + 60000 ? iso : null;
+}
+
 async function ensureLegs(d, force) {
   if (!S.trip.autoRoute && !force) return;
   const list = dayCards(d);
+  /* 先用現有（估的或舊的）路程排一次，拿到每一段的出發時刻。
+     這是循環的——時刻依賴路程、路程又依賴時刻——但一輪就夠：
+     路況造成的差是幾分鐘，不會把出發時段推到另一個尖峰去。 */
+  const sched = computeSchedule(d);
+  const departAtOf = {};
+  sched.forEach(x => { departAtOf[x.card.id] = x.depart; });
+
   const jobs = [];
   for (let i = 0; i < list.length - 1; i++) {
     const a = list[i], b = list[i + 1];
     const pa = a.data.place, pb = b.data.place;
     if (!pa || !pb || pa.lat == null || pb.lat == null) continue;
     const mode = (a.data.leg && a.data.leg.mode) || S.trip.defaultMode || 'drive';
-    const sig = [pa.lat, pa.lng, pb.lat, pb.lng, mode].join('|');
+    const departAt = departISO(d, departAtOf[a.id], pa);
+    /* 出發時刻只取到半小時，否則每動一下順序就整天重算。
+       真正會改變路況的是「早上還是傍晚」，不是差那八分鐘。 */
+    const slot = departAt ? departAt.slice(0, 13) + (departAt.slice(14, 16) < '30' ? 'A' : 'B') : '-';
+    const sig = [pa.lat, pa.lng, pb.lat, pb.lng, mode, slot].join('|');
     if (!force && a.data.leg && a.data.leg.min != null && a.data.leg.sig === sig) continue;
-    jobs.push({ card:a, sig, mode,
+    jobs.push({ card:a, sig, mode, departAt,
       origin:{ lat:pa.lat, lng:pa.lng }, destination:{ lat:pb.lat, lng:pb.lng } });
   }
   if (!jobs.length) return;
   try {
     const res = await gmap('route_batch', {
-      legs: jobs.map(j => ({ origin:j.origin, destination:j.destination, mode:j.mode })),
+      legs: jobs.map(j => ({ origin:j.origin, destination:j.destination,
+                             mode:j.mode, departAt:j.departAt || undefined })),
     });
     for (let i = 0; i < jobs.length; i++) {
       const r = res.legs[i]; if (!r || r.seconds == null) continue;
       jobs[i].card.data.leg = { mode:jobs[i].mode, min:Math.round(r.seconds / 60),
-                                meters:r.meters, sig:jobs[i].sig, at:new Date().toISOString() };
+                                meters:r.meters, sig:jobs[i].sig, at:new Date().toISOString(),
+                                traffic: !!jobs[i].departAt };
       await touch(jobs[i].card);
     }
     render();
@@ -1026,6 +1069,7 @@ async function ensureHours(d) {
       p.hoursPeriods = np.hoursPeriods || p.hoursPeriods;
       p.placeId = np.placeId || p.placeId;
       if (np.rating != null) { p.rating = np.rating; p.ratingCount = np.ratingCount; }
+      if (np.utcOffsetMinutes != null) p.utcOffsetMinutes = np.utcOffsetMinutes;
       p.hoursAt = new Date().toISOString();
       await touch(c);
     } catch (e) {
@@ -1629,8 +1673,11 @@ function legOf(a, b) {
     const sig = (pa && pb && pa.lat != null && pb.lat != null)
       ? [pa.lat, pa.lng, pb.lat, pb.lng, mode].join('|') : null;
     /* sig 對得上＝這一對沒被動過；'tohoku' 與 'manual' 是外部帶進來或手填的，
-       只要兩端座標沒變就繼續採用。 */
-    if (!stored.sig || stored.sig === sig || stored.sig === 'tohoku' || stored.sig === 'manual') {
+       只要兩端座標沒變就繼續採用。
+       sig 後面還會接一段出發時段（路況用），所以是比前綴不是比全等——
+       時段換了值仍然可用，只是下次 ensureLegs 會去要一份新的。 */
+    if (!stored.sig || stored.sig === 'tohoku' || stored.sig === 'manual' ||
+        (sig && (stored.sig === sig || stored.sig.indexOf(sig + '|') === 0))) {
       return stored;
     }
   }

@@ -17,9 +17,13 @@ App 本身功能完整、後端已上線、同步實測過。剩下的是視覺�
   第二次修的是 42702：`RETURNS TABLE` 的欄位名跟資料表欄位同名，
   `SET rev = rev + 1` 兩邊都說得通 → 每次推送都失敗。改成 `rev = cards.rev + 1`。
 - Edge Function **`gmap`** 已部署（`verify_jwt: false`，驗證改由旅程代碼＋密碼負責）。
-- **`GOOGLE_MAPS_API_KEY` 這個 secret 還沒設**，所以自動抓景點與自動算路程目前是停的，
-  會回 `NO_API_KEY`，前端已經有降級處理（改手動填，不會整頁失效）。
-  申請步驟寫在 `docs/GOOGLE-MAPS-SETUP.md`，要使用者自己去綁信用卡。
+- **`GOOGLE_MAPS_API_KEY` 已設定（2026-08-29 實測通過）**：`resolve`（Places New）
+  與 `route`／`route_batch`（Routes）都拿得到資料。降級路徑（`NO_API_KEY` → 改手動填）
+  仍然留著，key 被撤掉也不會整頁失效。
+- 使用者在 Google Cloud 開了 7 個 API，**實際只用到 2 個**：Places API (New)、Routes API。
+  Places API（舊版）／Places UI Kit／Roads API／Route Optimization API／Weather API
+  都沒有程式碼在呼叫（天氣走 Open-Meteo，免 key）。建議關掉沒用到的——
+  key 只靠「不進前端」保護，開著的 API 越少，萬一外流的損失越小。
 
 ### 前端
 - 單檔 `index.html`，2023 行，7 個 script 區塊，`node check.mjs index.html` 通過。
