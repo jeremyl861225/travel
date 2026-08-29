@@ -275,6 +275,9 @@ a{color:inherit}
   background:rgba(27,26,22,.09);border-radius:99px}
 .strip i{position:absolute;top:0;bottom:0;background:var(--accent);border-radius:99px}
 .strip b{position:absolute;top:-3px;bottom:-3px;width:1.5px;background:var(--ink);opacity:.55}
+/* 「現在」：整條時間軸上唯一會動的東西，給它朱紅與全高，跟膠囊分開讀。 */
+.strip u{position:absolute;top:-5px;bottom:-5px;width:2px;background:var(--vermilion);
+  text-decoration:none;border-radius:1px}
 .striplab{display:flex;justify-content:space-between;margin-top:4px;
   font-family:var(--mono);font-size:9.5px;letter-spacing:.03em;color:var(--ink3)}
 .striplab span:nth-child(2){opacity:.75}
@@ -362,6 +365,11 @@ textarea.inp{font-family:var(--serif);font-size:15px;line-height:1.65;letter-spa
 .acsub{font-family:var(--mono);font-size:10.5px;opacity:.7;margin-top:2px;line-height:1.35}
 .acbusy{font-family:var(--mono);font-size:10.5px;color:var(--ink3);padding:8px 2px}
 .leaf .hint,.leaf .lab{color:inherit;opacity:.75}
+/* 長程駕駛與雨勢：兩個都是「你該知道但不是錯誤」的層級，
+   所以用琥珀而不是勘誤朱紅——朱紅要留給真的排錯的東西。 */
+.longdrive{font-family:var(--mono);font-size:10px;letter-spacing:.02em;
+  color:#8A6A12;background:rgba(191,138,18,.14);padding:1px 6px;border-radius:3px}
+.rainchip{font-family:var(--mono);font-size:10.5px;color:inherit;opacity:.9}
 
 /* ── 底部操作列（拇指可及） ─────────────────────────────── */
 /* 操作列在書殼外面，正常流排版。按鈕靠右——手機的左下角是圓角，
@@ -855,7 +863,9 @@ const S = {
   syncing: false,
   syncErr: '',
   online: navigator.onLine,
-  weather: {},       // dayIndex -> {tmin,tmax,code}
+  weather: {},        // dayIndex -> {tmin,tmax,code}
+  weatherH: {},       // dayIndex -> {小時: {pop,temp,code}}
+  rebase: null,       // {day,id,min} 現地重新基準，只存在這台裝置
 };
 
 const catsOf = () => (S.trip && S.trip.cats && S.trip.cats.length) ? S.trip.cats : DEFAULT_CATS;
@@ -890,8 +900,15 @@ function computeSchedule(d) {
   if (t == null) t = 8 * 60 + 30;
   const out = list.map((c, i) => {
     const pin = hm2min(c.data.pinTime);
-    let arrive = t, wait = 0, late = 0;
-    if (pin != null) {
+    let arrive = t, wait = 0, late = 0, rebased = false, drift = 0;
+    /* 現地重新基準：使用者在某一站按「我在這裡」，那一站的抵達時刻就
+       改成當下的真實時間，後面整條全部跟著重推。這只存在這台裝置，
+       不同步——它是「我現在的狀態」，不是行程本身。 */
+    const rb = (S.rebase && S.rebase.day === d && S.rebase.id === c.id) ? S.rebase.min : null;
+    if (rb != null) {
+      drift = rb - t; arrive = rb; rebased = true;
+      if (drift > 0) late = drift; else wait = -drift;
+    } else if (pin != null) {
       if (pin >= t) { arrive = pin; wait = pin - t; }
       else { arrive = t; late = t - pin; }
     }
@@ -900,7 +917,8 @@ function computeSchedule(d) {
     const leg = i < list.length - 1 ? legOf(c, list[i + 1]) : null;
     const legMin = leg && leg.min != null ? Number(leg.min) : null;
     t = depart + (legMin == null ? 0 : legMin);
-    return { card:c, arrive, depart, wait, late, pin, leg, legMin, legKnown: legMin != null };
+    return { card:c, arrive, depart, wait, late, pin, leg, legMin,
+             legKnown: legMin != null, rebased, drift };
   });
 
   /* 往回走一次，把「距離下一個釘選點還差幾分」掛回每一段。
@@ -929,6 +947,16 @@ function computeSchedule(d) {
       const atLeave = isOpenAt(per2, dp.w, r.depart);
       r.leaveClosed = !atLeave.open && !atLeave.unknown;
     }
+    /* 最後入場。日本的館所普遍在閉館前 30 分就停止入場，
+       Google 的營業時間只給閉館時刻，光看它會白跑一趟。
+       這個值是人手填的（分鐘，閉館前多久），沒填就不判斷。 */
+    const le = Number(r.card.data.lastEntry) || 0;
+    if (le > 0 && per2) {
+      const close = closeMinOn(per2, dp.w, r.arrive);
+      if (close != null && r.arrive > close - le) {
+        r.lateEntry = { close, limit: close - le };
+      }
+    }
   });
   return out;
 }
@@ -941,6 +969,23 @@ function closedAllDay(periods, weekday) {
   if (!periods || !periods.length) return false;
   if (periods.length === 1 && !periods[0].close) return false;   // 24 小時
   return !periods.some(p => p.open && p.open.day === weekday);
+}
+/* 那一天涵蓋這個時刻的營業區段是幾點結束。跨夜的區段 close.day 會落在隔天，
+   要把它加回 1440 才比得出來。找不到就回 null（不營業或資料不足）。 */
+function closeMinOn(periods, weekday, minutes) {
+  if (!periods || !periods.length) return null;
+  if (periods.length === 1 && !periods[0].close) return null;      // 24 小時
+  let best = null;
+  for (const p of periods) {
+    if (!p.open || !p.close) continue;
+    let o = p.open.hour * 60 + (p.open.minute || 0);
+    let c = p.close.hour * 60 + (p.close.minute || 0);
+    let day = p.open.day;
+    if (p.close.day !== p.open.day) c += 1440;
+    if (day !== weekday) continue;
+    if (minutes >= o && minutes <= c) { if (best == null || c < best) best = c; }
+  }
+  return best;
 }
 function isOpenAt(periods, weekday, minutes) {
   if (!periods || !periods.length) return { unknown:true, open:false };
@@ -1219,15 +1264,31 @@ async function loadWeather(d) {
   if (diff < 0 || diff > 15) { S.weather[d] = null; return; }
   S.weather[d] = null;
   try {
+    /* 一天一筆最高最低溫，對「下午三點在吾妻小富士會不會下雨」沒有幫助。
+       同一支 API 就有逐時，多要三個欄位而已，成本一樣是零。 */
     const u = 'https://api.open-meteo.com/v1/forecast?latitude=' + c.data.place.lat +
       '&longitude=' + c.data.place.lng +
-      '&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto' +
-      '&start_date=' + date + '&end_date=' + date;
+      '&daily=weather_code,temperature_2m_max,temperature_2m_min' +
+      '&hourly=precipitation_probability,temperature_2m,weather_code' +
+      '&timezone=auto&start_date=' + date + '&end_date=' + date;
     const j = await (await fetch(u)).json();
     if (j && j.daily && j.daily.time && j.daily.time.length) {
       S.weather[d] = { code:j.daily.weather_code[0],
         tmax:Math.round(j.daily.temperature_2m_max[0]),
         tmin:Math.round(j.daily.temperature_2m_min[0]) };
+      if (j.hourly && j.hourly.time) {
+        /* time 是 "2026-09-26T14:00" 這種本地時間字串，直接取小時當索引；
+           不要丟給 Date 解析，那會被裝置時區再偏移一次。 */
+        const byHour = {};
+        j.hourly.time.forEach((t, i) => {
+          const hh = parseInt(String(t).slice(11, 13), 10);
+          if (!isFinite(hh)) return;
+          byHour[hh] = { pop:j.hourly.precipitation_probability[i],
+                         temp:j.hourly.temperature_2m[i],
+                         code:j.hourly.weather_code[i] };
+        });
+        S.weatherH[d] = byHour;
+      }
       render();
     }
   } catch (e) { /* 沒網路就算了，天氣不是主要功能 */ }
@@ -1447,6 +1508,11 @@ async function doJoin() {
 
 async function enterTrip() {
   S.cards = (await dbByTrip(S.trip.code)) || [];
+  /* 現地重新基準只存在這台裝置，而且只在同一天有效——
+     隔天再打開時昨天的「我在這裡」已經沒有意義了。 */
+  const rb = await kvGet('rebase');
+  S.rebase = (rb && rb.day === todayIndex() && rb.on === todayISO()) ? rb : null;
+  if (rb && !S.rebase) await kvSet('rebase', null);
   const ti = todayIndex();
   S.day = ti >= 0 ? ti : 0;
   S.open = null;
@@ -1596,6 +1662,14 @@ function leafHTML(r, i, flags) {
   const p = d.place || {};
   if (p.rating != null) meta.push('★ ' + p.rating + (p.ratingCount ? ' (' + p.ratingCount + ')' : ''));
   if (r.hours && r.hours.unknown === false && !r.hours.open) meta.push('到時沒開');
+  /* 抵達那個小時的降雨機率。三成以下不顯示——那是雜訊，不是資訊。
+     戶外行程（自然、展望）才提示，室內下不下雨無所謂。 */
+  const wh = S.weatherH[c.dayIndex];
+  if (wh && (d.catId === 'nature' || d.catId === 'view' || !d.catId)) {
+    const hh = wh[Math.floor((r.arrive % 1440) / 60)];
+    if (hh && hh.pop != null && hh.pop >= 30)
+      meta.push('<span class="rainchip">☂ ' + hh.pop + '%</span>');
+  }
   if (d.todos && d.todos.length) {
     const done = d.todos.filter(t => t.done).length;
     meta.push('預定 ' + done + '/' + d.todos.length);
@@ -1617,6 +1691,16 @@ function leafHTML(r, i, flags) {
   else if (r.leaveClosed)
     err += '<div class="errata warn"><b>關</b><span>停到 ' + min2hm(r.depart) +
            ' 時已經打烊，停留時間可能要縮短。</span></div>';
+  if (r.lateEntry)
+    err += '<div class="errata warn"><b>入</b><span>' + min2hm(r.lateEntry.limit) +
+           ' 就停止入場（' + min2hm(r.lateEntry.close) + ' 閉館），' +
+           min2hm(r.arrive) + ' 到會進不去。</span></div>';
+  if (r.rebased)
+    err += '<div class="errata warn"><b>現</b><span>這一站的時刻已改成你回報的 ' +
+           min2hm(r.arrive) + '（' + (r.drift > 0 ? '比計畫慢 ' + durTxt(r.drift)
+             : r.drift < 0 ? '比計畫快 ' + durTxt(-r.drift) : '剛好') +
+           '），後面全部順延。<button class="btn" data-unrebase="1" ' +
+           'style="border-color:currentColor;color:inherit;min-height:24px;padding:0 8px;margin-left:6px">取消</button></span></div>';
 
   return '<article class="' + cls + '" data-card="' + c.id + '">' +
     '<div class="lrow">' +
@@ -1686,6 +1770,11 @@ function detailHTML(c, r) {
   const isStay = d.catId === 'stay' || (catBy(d.catId) && catBy(d.catId).mark === 'stay');
   h += '<div class="blk full"><div class="row">' +
     '<button class="btn" data-edit="' + c.id + '">編輯</button>' +
+    /* 旅途中用的：報一次「我現在人在這裡」，剩下的整天當場重推。
+       只有今天那一天才給——對其他天按它沒有意義。 */
+    (c.dayIndex >= 0 && c.dayIndex === todayIndex()
+      ? '<button class="btn" data-here="' + c.id + '">我在這裡</button>' : '') +
+    (c.dayIndex < 0 ? '<button class="btn" data-bestday="' + c.id + '">排進哪一天？</button>' : '') +
     '<a class="btn" href="' + gmPlace(c) + '" target="_blank" rel="noopener">' + mark('pin','sm') + ' 地圖</a>' +
     (!(d.place && d.place.placeId) && gmCoords(c)
       ? '<a class="btn" href="' + gmCoords(c) + '" target="_blank" rel="noopener" ' +
@@ -1730,6 +1819,21 @@ function renderPlate() {
         (w ? '<div class="dsub">' + (WCODE[w.code] || '') + ' ' + w.tmin + '–' + w.tmax + '°C</div>' : '') +
         /* 公休與撲空要在日首就看得到。點進每一張卡才發現「今天週一休館」
            已經太晚了——那是要換天的決定，不是換時間的決定。 */
+        /* 今天：直接講「現在應該在哪」。行程表最沒用的時刻，
+           就是你人在路上卻要自己拿手指去比對哪一列。 */
+        (() => {
+          if (d !== ti || !sched.length) return '';
+          const n = nowMin();
+          const at = sched.find(x => n >= x.arrive && n < x.depart);
+          if (at) return '<div class="dsub" style="color:var(--accent-line)">現在 ' +
+            min2hm(n) + '　應該在 <b>' + esc(at.card.data.name || '') + '</b>，還有 ' +
+            durTxt(at.depart - n) + '</div>';
+          const nx = sched.find(x => x.arrive > n);
+          if (nx) return '<div class="dsub" style="color:var(--accent-line)">現在 ' +
+            min2hm(n) + '　在往 <b>' + esc(nx.card.data.name || '') + '</b> 的路上，' +
+            durTxt(nx.arrive - n) + '後到</div>';
+          return '<div class="dsub">今天的行程已經結束</div>';
+        })() +
         (() => {
           const shut = sched.filter(x => x.hours && x.hours.unknown === false && !x.hours.open).length;
           const off = list.filter(c => {
@@ -1788,7 +1892,11 @@ function renderPlate() {
       const body = mark(m.mark, 'sm') + (leg.min == null ? '<span>路程未知</span>' :
         (leg.est ? '<span class="est">約</span>' : '') +
         '<b>' + leg.min + ' 分</b>' + (leg.meters ? '<span>' + dist(leg.meters) + '</span>' : '')) +
-        (gap > 20 ? '<span class="gap">空檔 ' + durTxt(gap) + '</span>' : '');
+        (gap > 20 ? '<span class="gap">空檔 ' + durTxt(gap) + '</span>' : '') +
+        /* 連開九十分鐘以上要休息。行程表本來完全沒有休息的概念，
+           而這趟最長的一段是九十九分鐘。 */
+        ((leg.min != null && leg.min >= 90 && (leg.mode || S.trip.defaultMode) === 'drive')
+          ? '<span class="longdrive">連續開車，中途找地方休息</span>' : '');
       /* 平常點下去就是開 Google 路線；編輯模式才是改這一段的數字與交通方式。 */
       h += '<div class="hinge">' + (S.edit
         ? '<button class="leg' + (leg.min == null ? ' miss' : '') + '" data-leg="' + c.id + '">' +
@@ -1872,7 +1980,7 @@ function haversine(a, b) {
    比逐段打 computeRoutes 便宜。拿不到（沒 key、超過 14 站、走不通）就回 null，
    呼叫端會退回直線估算，而不是假裝有資料。 */
 const MATRIX_TTL = 6 * 3600000;
-async function dayMatrix(d, list) {
+async function dayMatrix(d, list, cacheKey) {
   const idx = [], pts = [];
   list.forEach((c, i) => {
     const p = c.data.place;
@@ -1881,7 +1989,8 @@ async function dayMatrix(d, list) {
   if (pts.length < 2 || pts.length > 14) return null;
   const mode = (S.trip && S.trip.defaultMode) || 'drive';
   const sig = pts.map(p => p.lat.toFixed(4) + ',' + p.lng.toFixed(4)).join(';') + '|' + mode;
-  const hit = S.matrix && S.matrix[d];
+  const key = cacheKey == null ? 'd' + d : cacheKey;
+  const hit = S.matrix && S.matrix[key];
   if (hit && hit.sig === sig && Date.now() - hit.at < MATRIX_TTL) return hit;
   try {
     const departAt = departISO(d, hm2min(dayStart(d)), list[idx[0]] && list[idx[0]].data.place);
@@ -1890,7 +1999,7 @@ async function dayMatrix(d, list) {
        否則沒有座標的卡一插進來，所有格子就對錯人了。 */
     const pos = {}; idx.forEach((li, k) => { pos[li] = k; });
     const out = { sig, at: Date.now(), pos, seconds: m.seconds, meters: m.meters };
-    S.matrix = S.matrix || {}; S.matrix[d] = out;
+    S.matrix = S.matrix || {}; S.matrix[key] = out;
     return out;
   } catch (e) {
     return null;
@@ -2110,6 +2219,80 @@ async function optimizeDay(d) {
            visits: route.visits.length, metrics: route.metrics || null };
 }
 
+/* 口袋裡的卡要排進哪一天？對每一天試算「插在哪個位置最省」，
+   再把六天排名。用的是跟排順路同一套：真實路網矩陣＋營業時間約束。
+   第一站與最後一站不動（通常是住宿或機場），所以只試中間的位置。 */
+async function sheetBestDay(id) {
+  const card = (S.cards || []).find(c => c.id === id);
+  if (!card) return;
+  const p = card.data.place;
+  if (!p || p.lat == null) return toast('這張卡沒有座標，算不出插在哪裡最划算');
+
+  toast('正在對每一天各試算一次…', 6000);
+  const rows = [];
+  for (let d = 0; d < S.trip.days; d++) {
+    const base = dayCards(d);
+    if (base.length < 2) continue;
+    const full = base.concat([card]);
+    const cand = full.length - 1;
+    const mx = await dayMatrix(d, full, 'try' + d);
+    const pt = full.map(c => {
+      const q = c.data.place;
+      return (q && q.lat != null) ? [q.lat, q.lng] : null;
+    });
+    const cost = makeCost(full, pt, mx);
+    const baseOrder = base.map((_, i) => i);
+    const before = scoreOrder(full, baseOrder, d, cost);
+    let best = null;
+    for (let k = 1; k < base.length; k++) {
+      const order = baseOrder.slice(0, k).concat([cand], baseOrder.slice(k));
+      const sc = scoreOrder(full, order, d, cost);
+      if (!best || scoreBetter(sc, best.sc)) best = { k, sc };
+    }
+    if (!best) continue;
+    rows.push({ d, before, after: best.sc, at: best.k, beforeId: base[best.k].id,
+                afterName: base[best.k - 1].data.name, mx: !!mx });
+  }
+  if (!rows.length) return toast('沒有哪一天有兩站以上，插不進去');
+  rows.sort((a, b) =>
+    (a.after.shut - a.before.shut) - (b.after.shut - b.before.shut) ||
+    (a.after.end - a.before.end) - (b.after.end - b.before.end));
+
+  const body = rows.map((r, i) => {
+    const dEnd = r.after.end - r.before.end;
+    const dShut = r.after.shut - r.before.shut;
+    const dp = dateParts(dayDate(r.d));
+    return '<div class="todo"><span class="t">' +
+      '<b>第 ' + (r.d + 1) + ' 天</b>　' + dp.m + '/' + dp.d + '　接在「' +
+      esc(r.afterName || '第一站') + '」後面' +
+      '<div class="acsub">收工 ' + min2hm(r.before.end) + ' → ' + min2hm(r.after.end) +
+      '（晚 ' + durTxt(dEnd) + '）' +
+      (dShut > 0 ? '　<span style="color:var(--vermilion)">會多 ' + dShut + ' 站撲空</span>'
+                 : dShut < 0 ? '　少 ' + (-dShut) + ' 站撲空' : '') +
+      '</div></span>' +
+      '<button class="btn" data-put="' + i + '" style="min-height:26px;padding:0 8px">排</button>' +
+      '</div>';
+  }).join('');
+
+  openSheet('排進哪一天',
+    '<p class="prose" style="margin-bottom:10px">' +
+      '把「<b>' + esc(card.data.name) + '</b>」插進每一天最省的位置各試一次，由划算排到不划算。' +
+      '第一站與最後一站不動，所以只試中間的位置。</p>' +
+    '<div>' + body + '</div>' +
+    '<p class="hint">「晚」是那一天的收工時間會往後多少。' +
+      '撲空是指插進去之後有幾站會在沒營業的時候到。</p>',
+    () => {
+      $$('[data-put]').forEach(b => b.onclick = async () => {
+        const r = rows[parseInt(b.dataset.put, 10)];
+        await moveCard(card, r.d, r.beforeId);
+        closeSheet();
+        S.day = r.d; S.open = card.id; render();
+        if (S.trip.autoRoute) ensureLegs(r.d, true);
+        toast('已排進第 ' + (r.d + 1) + ' 天');
+      });
+    });
+}
+
 async function sheetPlan() {
   const d = S.day;
   const list0 = dayCards(d);
@@ -2277,7 +2460,12 @@ function dayStrip(sched, d) {
   }).join('');
   const pins = sched.filter(r => r.pin != null)
     .map(r => '<b style="left:' + pct(r.arrive).toFixed(2) + '%"></b>').join('');
-  return '<div class="strip">' + caps + pins + '</div>' +
+  /* 今天才畫「現在」。它是這條時間軸上唯一會自己動的東西，
+     所以用一條穿透全高的線，不跟膠囊搶。 */
+  const n = nowMin();
+  const now = (d === todayIndex() && n >= start && n <= end)
+    ? '<u style="left:' + pct(n).toFixed(2) + '%"></u>' : '';
+  return '<div class="strip">' + caps + pins + now + '</div>' +
     '<div class="striplab"><span>' + min2hm(start) + '</span>' +
     '<span>全程 ' + durTxt(span) + '</span>' +
     '<span>' + min2hm(end) + '</span></div>';
@@ -2350,6 +2538,17 @@ function bindPlate() {
     if (!t) return;
     t.done = !t.done; await touch(c); renderPlate();
   });
+  $$('[data-here]', p).forEach(n => n.onclick = async () => {
+    const id = n.dataset.here;
+    S.rebase = { day: S.day, id, min: nowMin(), on: todayISO() };
+    await kvSet('rebase', S.rebase);
+    render();
+    toast('已用現在的時間重推這一天');
+  });
+  $$('[data-unrebase]', p).forEach(n => n.onclick = async () => {
+    S.rebase = null; await kvSet('rebase', null); render(); toast('已回到原本的計畫時刻');
+  });
+  $$('[data-bestday]', p).forEach(n => n.onclick = () => sheetBestDay(n.dataset.bestday));
   $$('[data-keep]', p).forEach(n => n.onclick = async () => {
     const c = cardById(n.dataset.keep);
     c.rev = c.conflict.rev; c.conflict = null; c.dirty = true;
@@ -2662,6 +2861,11 @@ function sheetEdit(c) {
       '<div style="flex:1"><span class="lab">釘選時間</span>' +
       '<input class="inp" id="ePin" type="time" value="' + esc(d.pinTime || '') + '"></div>' +
     '</div>' +
+    /* Google 只給閉館時刻，不給最後入場。日本的館所普遍提早 30 分停止入場，
+       這一欄沒填就不判斷——寧可不提醒，也不要拿猜的去嚇人。 */
+    '<div class="fld stack"><span class="lab">最後入場（閉館前幾分鐘，沒有就留 0）</span>' +
+    '<input class="inp" id="eLast" type="number" min="0" max="180" step="5" value="' +
+    (Number(d.lastEntry) || 0) + '"></div>' +
     '<div class="fld stack"><span class="lab">介紹</span>' +
     '<textarea class="inp" id="eNote">' + esc(d.note || '') + '</textarea></div>' +
     '<div class="fld stack"><span class="lab">網址連結（一行一個，可用「名稱 網址」）</span>' +
@@ -2714,6 +2918,7 @@ function sheetEdit(c) {
         d.name = $('#eName').value.trim();
         d.catId = cat;
         d.stayMin = clamp(parseInt($('#eStay').value, 10) || 0, 0, 1440);
+        d.lastEntry = clamp(parseInt($('#eLast').value, 10) || 0, 0, 180);
         d.pinTime = $('#ePin').value || '';
         d.note = $('#eNote').value;
         d.links = $('#eLinks').value.split('\n').map(s => s.trim()).filter(Boolean).map(s => {
