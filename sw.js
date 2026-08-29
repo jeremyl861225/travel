@@ -32,6 +32,9 @@ self.addEventListener('fetch', e => {
   const url = new URL(req.url);
   /* Supabase 與 Google 的請求絕不進快取：拿到舊的行程比拿不到更糟。 */
   if (url.origin !== self.location.origin) return;
+  /* jeremyl861225.github.io 底下每個 repo 共用同一個 origin。
+     只攔自己子路徑的請求，否則會插手 todo-app、Clinical-Tools 的資源。 */
+  if (!url.pathname.startsWith(new URL('./', self.location.href).pathname)) return;
 
   e.respondWith(
     caches.open(CACHE).then(async cache => {

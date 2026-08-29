@@ -1209,10 +1209,18 @@ function pt(c) {
 }
 function gmPlace(c) {
   const p = c.data.place || {};
-  let u = 'https://www.google.com/maps/search/?api=1&query=' +
-          encodeURIComponent(c.data.name || (p.lat + ',' + p.lng));
-  if (p.placeId) u += '&query_place_id=' + encodeURIComponent(p.placeId);
-  return u;
+  /* 順序不能顛倒。Google Maps 查不到地名時「不會報錯」，會退回搜尋使用者所在地
+     附近的同類地點——tohoku-2026 實測過指到 2,239 km 外的案例。
+     所以：有 place_id 就用 place_id（唯一精確）、其次用座標、名稱是最後手段。 */
+  if (p.placeId) {
+    return 'https://www.google.com/maps/search/?api=1&query=' +
+           encodeURIComponent(c.data.name || p.placeId) +
+           '&query_place_id=' + encodeURIComponent(p.placeId);
+  }
+  if (p.lat != null && p.lng != null) {
+    return 'https://www.google.com/maps/search/?api=1&query=' + p.lat + ',' + p.lng;
+  }
+  return 'https://www.google.com/maps/search/?api=1&query=' + encodeURIComponent(c.data.name || '');
 }
 function gmDir(a, b, mode) {
   let u = 'https://www.google.com/maps/dir/?api=1&origin=' + pt(a) + '&destination=' + pt(b) +

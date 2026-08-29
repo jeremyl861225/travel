@@ -1,0 +1,157 @@
+{
+ "note": "由 tools/group-palettes.mjs 從 colormind-raw.json 分群後補到 15 色。順序已重排成相鄰感知距離最大。",
+ "space": "OKLab",
+ "target": 15,
+ "groups": [
+  {
+   "group": 1,
+   "count": 15,
+   "colors": [
+    "#3DD21C",
+    "#FBF9F9",
+    "#B7A84B",
+    "#A4EF3E",
+    "#E4E5E3",
+    "#BEB737",
+    "#D8E7E9",
+    "#83E176",
+    "#AFB5B2",
+    "#EABD50",
+    "#92DC84",
+    "#C5B9B1",
+    "#A5B386",
+    "#A3C98C",
+    "#C5C3A2"
+   ],
+   "dropped": [
+    "#F5F6F6",
+    "#C4B5B6"
+   ],
+   "models": [
+    "ui",
+    "default",
+    "maple_story",
+    "only_god_forgives",
+    "contempt_1963"
+   ],
+   "meanLightness": 0.821,
+   "meanChroma": 0.094,
+   "minAdjacentDistance": 0.059,
+   "clashWithErrata": [],
+   "lowContrastForButtonText": []
+  },
+  {
+   "group": 2,
+   "count": 15,
+   "colors": [
+    "#2E41A1",
+    "#0D151E",
+    "#7C2B21",
+    "#225F65",
+    "#2B1C12",
+    "#6B4C51",
+    "#282E1A",
+    "#6D2655",
+    "#5B4D2C",
+    "#342F32",
+    "#6A3D4F",
+    "#304750",
+    "#673A31",
+    "#333848",
+    "#4A3E23"
+   ],
+   "dropped": [
+    "#5B524E",
+    "#181524",
+    "#251514",
+    "#241B16",
+    "#6C241E"
+   ],
+   "models": [
+    "ui",
+    "default",
+    "maple_story",
+    "flame_photography",
+    "only_god_forgives",
+    "contempt_1963"
+   ],
+   "meanLightness": 0.367,
+   "meanChroma": 0.059,
+   "minAdjacentDistance": 0.078,
+   "clashWithErrata": [],
+   "lowContrastForButtonText": []
+  },
+  {
+   "group": 3,
+   "count": 15,
+   "colors": [
+    "#FC4D06",
+    "#546CA2",
+    "#CC983F",
+    "#8A8EEC",
+    "#E73A31",
+    "#A9A7BD",
+    "#A44357",
+    "#9697DF",
+    "#BF7857",
+    "#806386",
+    "#B99992",
+    "#907DCE",
+    "#A88B72",
+    "#6E82A1",
+    "#8F879E"
+   ],
+   "dropped": [],
+   "models": [
+    "ui",
+    "default",
+    "flame_photography",
+    "contempt_1963"
+   ],
+   "meanLightness": 0.64,
+   "meanChroma": 0.1,
+   "minAdjacentDistance": 0.051,
+   "clashWithErrata": [
+    "#FC4D06",
+    "#E73A31"
+   ],
+   "lowContrastForButtonText": []
+  },
+  {
+   "group": 4,
+   "count": 15,
+   "colors": [
+    "#0E8718",
+    "#7693B9",
+    "#A66232",
+    "#1A746B",
+    "#AC9665",
+    "#686545",
+    "#919F7D",
+    "#45873A",
+    "#857063",
+    "#909D7E",
+    "#597A66",
+    "#9D914A",
+    "#7D8A8A",
+    "#8A9349",
+    "#8A8071"
+   ],
+   "dropped": [],
+   "models": [
+    "default",
+    "maple_story",
+    "flame_photography",
+    "only_god_forgives",
+    "contempt_1963"
+   ],
+   "meanLightness": 0.6,
+   "meanChroma": 0.073,
+   "minAdjacentDistance": 0.087,
+   "clashWithErrata": [],
+   "lowContrastForButtonText": [
+    "#45873A"
+   ]
+  }
+ ]
+}
