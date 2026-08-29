@@ -32,7 +32,7 @@
 | `schema.sql` | Supabase 資料表與 RPC，可重複執行 |
 | `supabase/functions/gmap/index.ts` | Google Maps 代理，API key 只活在這一層 |
 | `check.mjs` | 交付前的語法檢查，**每次改完都要跑** |
-| `tools/make-icons.mjs` | 產生 PWA 圖示 |
+| `tools/make-icons.py` | 從 `osaka-castle.png` 產生 PWA 圖示，比例照 Clinical-Tools |
 | `docs/GOOGLE-MAPS-SETUP.md` | 申請 API key 的逐步指引 |
 
 ## 開發
