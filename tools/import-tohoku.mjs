@@ -28,7 +28,18 @@ const TYPE2CAT = {
   '交通':'transit', '町並':'shop',
 };
 
-const mins = s => { const m = /(\d+)/.exec(String(s || '')); return m ? +m[1] : null; };
+/* 「1 小時 4 分」只抓第一個數字會變成 1 分——三段 60–90 公里的長途
+   因此被記成一分鐘，之後整天的時刻全錯。小時與分鐘要分開抓。 */
+const mins = s => {
+  const t = String(s || '');
+  const h = /(\d+)\s*(?:小時|時間|hr|h)/.exec(t);
+  /* 「分」是中文字，後面接 \b 不成立（\b 要求相鄰是 \w），
+     寫成 /分\b/ 會整個匹配失敗，1 小時 4 分就只剩 60 分。 */
+  const m = /(\d+)\s*分/.exec(t) || /(\d+)\s*(?:min|mins)\b/.exec(t) ||
+            (h ? null : /(\d+)/.exec(t));
+  if (!h && !m) return null;
+  return (h ? +h[1] * 60 : 0) + (m ? +m[1] : 0);
+};
 const hm2min = s => { const m = /^(\d{1,2}):(\d{2})$/.exec(String(s || '').trim());
   return m ? (+m[1]) * 60 + (+m[2]) : null; };
 

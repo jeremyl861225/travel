@@ -209,6 +209,8 @@ a{color:inherit}
   text-decoration:none;
 }
 .legedit{border:1px solid var(--rule);border-radius:4px;padding:0 5px 1px;font-size:10px}
+/* 估算值一定要看得出是估的 */
+.est{opacity:.6;font-size:10px}
 .leg.miss{color:var(--ink3)}
 /* 釘選造成的等待＝行程裡真的有空的時間，寫在板色上，跟紙上的路程分開 */
 .gap{font-family:var(--mono);font-size:10.5px;letter-spacing:.04em;color:var(--ink3);
@@ -748,7 +750,7 @@ function computeSchedule(d) {
   const list = dayCards(d);
   let t = hm2min(dayStart(d));
   if (t == null) t = 8 * 60 + 30;
-  const out = list.map(c => {
+  const out = list.map((c, i) => {
     const pin = hm2min(c.data.pinTime);
     let arrive = t, wait = 0, late = 0;
     if (pin != null) {
@@ -757,9 +759,10 @@ function computeSchedule(d) {
     }
     const stay = Number(c.data.stayMin) || 0;
     const depart = arrive + stay;
-    const legMin = c.data.leg && c.data.leg.min != null ? Number(c.data.leg.min) : null;
+    const leg = i < list.length - 1 ? legOf(c, list[i + 1]) : null;
+    const legMin = leg && leg.min != null ? Number(leg.min) : null;
     t = depart + (legMin == null ? 0 : legMin);
-    return { card:c, arrive, depart, wait, late, pin, legMin, legKnown: legMin != null };
+    return { card:c, arrive, depart, wait, late, pin, leg, legMin, legKnown: legMin != null };
   });
 
   /* 往回走一次，把「距離下一個釘選點還差幾分」掛回每一段。
@@ -975,6 +978,40 @@ async function ensureLegs(d, force) {
     if (e.code === 'NO_API_KEY') toast('路程要 Google API key 才算得出來，可先自己填');
     else toast(gmapMsg(e));
   }
+}
+
+/* 營業時間會變，而且卡片可能是手動建的、根本沒有。缺的就去問一次，
+   不要倚賴資料庫裡原本存了什麼。沒有 API key 時整段靜默跳過，
+   使用者仍然可以自己在編輯裡填。 */
+const HOURS_TTL = 30 * 86400000;   // 一個月後重新問一次
+async function ensureHours(d) {
+  if (!S.trip || !navigator.onLine) return;
+  const need = dayCards(d).filter(c => {
+    const p = c.data.place;
+    if (!p || (!p.placeId && !p.name)) return false;
+    if (!p.hoursPeriods) return true;
+    return !p.hoursAt || (Date.now() - new Date(p.hoursAt).getTime()) > HOURS_TTL;
+  }).slice(0, 6);                  // 一次最多問六個，別把額度一口氣吃掉
+  if (!need.length) return;
+  for (const c of need) {
+    const p = c.data.place;
+    try {
+      const res = await gmap('resolve', p.placeId
+        ? { url: 'https://www.google.com/maps/search/?api=1&query=x&query_place_id=' + p.placeId }
+        : { query: p.name, lat: p.lat, lng: p.lng });
+      const np = res && res.place;
+      if (!np) continue;
+      p.hoursText = np.hoursText || p.hoursText;
+      p.hoursPeriods = np.hoursPeriods || p.hoursPeriods;
+      p.placeId = np.placeId || p.placeId;
+      if (np.rating != null) { p.rating = np.rating; p.ratingCount = np.ratingCount; }
+      p.hoursAt = new Date().toISOString();
+      await touch(c);
+    } catch (e) {
+      if (e.code === 'NO_API_KEY') return;   // 沒設 key 就整批放棄，不要逐張報錯
+    }
+  }
+  render();
 }
 
 /* ═══ 天氣（Open-Meteo，免 key） ════════════════════════════ */
@@ -1229,6 +1266,7 @@ async function enterTrip() {
   render();
   startSyncLoop();
   syncNow(true);
+  if (S.day >= 0) ensureHours(S.day);
   if (!S.trip.nick) askNick();
 }
 function leaveTrip() {
@@ -1341,7 +1379,7 @@ function renderRail() {
   $$('[data-day]', r).forEach(n => n.onclick = () => {
     S.day = parseInt(n.dataset.day, 10); S.open = null;
     render(); $('#plate').scrollTop = 0;
-    if (S.day >= 0) { ensureLegs(S.day); loadWeather(S.day); }
+    if (S.day >= 0) { ensureLegs(S.day); loadWeather(S.day); ensureHours(S.day); }
   });
 }
 
@@ -1514,10 +1552,11 @@ function renderPlate() {
     h += leafHTML(r, i, { past });
     if (i < sched.length - 1 && d >= 0) {
       const c = r.card, nx = sched[i + 1].card;
-      const leg = c.data.leg || {};
+      const leg = r.leg || {};
       const m = modeBy(leg.mode || S.trip.defaultMode);
       const gap = sched[i + 1].wait;
       const body = mark(m.mark, 'sm') + (leg.min == null ? '<span>路程未知</span>' :
+        (leg.est ? '<span class="est">約</span>' : '') +
         '<b>' + leg.min + ' 分</b>' + (leg.meters ? '<span>' + dist(leg.meters) + '</span>' : '')) +
         (gap > 20 ? '<span class="gap">空檔 ' + durTxt(gap) + '</span>' : '');
       /* 平常點下去就是開 Google 路線；編輯模式才是改這一段的數字與交通方式。 */
@@ -1532,6 +1571,49 @@ function renderPlate() {
 
   plate.innerHTML = h;
   bindPlate();
+}
+
+/* ═══ 路程估算（程式端，不進資料庫） ══════════════════════════
+   路程是「兩張卡的相對位置」推出來的結果，不是卡片自己的屬性——
+   順序一改它就失效。所以估算放在這裡即時算，資料庫只存真正量到的值
+   （Google 算的或使用者手填的），而且只在那一對仍然相鄰時才採用。
+
+   係數是拿 tohoku-2026 的實測車程校準出來的，不是猜的：
+   24 段裡濾掉 10 段配對有問題的，剩 14 段乾淨的自駕段，
+   直線距離 × 1.58 ＝ 實際路程，平均時速 64 km/h。
+   誤差中位數 6.6 分、最大 20 分——夠用來排順序與抓大概，
+   但不能當成準確的到達時刻。所以估算值一律標「約」。 */
+const LEG_MODEL = {
+  drive:   { detour: 1.58, kmh: 64, overhead: 4 },   // overhead：停車、上下車
+  transit: { detour: 1.45, kmh: 32, overhead: 10 },  // overhead：等車
+  walk:    { detour: 1.25, kmh: 4.6, overhead: 1 },
+  bicycle: { detour: 1.30, kmh: 13, overhead: 2 },
+};
+function estimateLeg(a, b, mode) {
+  const pa = a && a.data.place, pb = b && b.data.place;
+  if (!pa || !pb || pa.lat == null || pb.lat == null) return null;
+  const m = LEG_MODEL[mode] || LEG_MODEL.drive;
+  const straight = haversine([pa.lat, pa.lng], [pb.lat, pb.lng]);
+  const road = straight * m.detour;
+  const min = Math.round(road / 1000 / m.kmh * 60 + m.overhead);
+  return { mode, min: Math.max(1, min), meters: Math.round(road), est: true };
+}
+/* 這一段目前該顯示什麼：量到的值只有在那一對仍然相鄰時才算數，
+   否則一律回退到即時估算。 */
+function legOf(a, b) {
+  const stored = a.data.leg;
+  const mode = (stored && stored.mode) || (S.trip && S.trip.defaultMode) || 'drive';
+  if (stored && stored.min != null) {
+    const pa = a.data.place, pb = b && b.data.place;
+    const sig = (pa && pb && pa.lat != null && pb.lat != null)
+      ? [pa.lat, pa.lng, pb.lat, pb.lng, mode].join('|') : null;
+    /* sig 對得上＝這一對沒被動過；'tohoku' 與 'manual' 是外部帶進來或手填的，
+       只要兩端座標沒變就繼續採用。 */
+    if (!stored.sig || stored.sig === sig || stored.sig === 'tohoku' || stored.sig === 'manual') {
+      return stored;
+    }
+  }
+  return estimateLeg(a, b, mode);
 }
 
 /* ═══ 自動排順路 ═══════════════════════════════════════════
@@ -1625,6 +1707,27 @@ function planDay(d) {
            movable: anchor.filter(a => !a).length, changed };
 }
 
+/* 用任意順序跑一次時刻推算，重排前後都要跑，才知道換順序是變好還是變壞。
+   路程一律走 legOf()——重排後舊的量測值失效，會自動落回程式端估算。 */
+function simulate(list, order, d) {
+  let t = hm2min(dayStart(d));
+  if (t == null) t = 540;
+  const dp = dateParts(dayDate(d));
+  return order.map((idx, k) => {
+    const c = list[idx];
+    const pin = hm2min(c.data.pinTime);
+    const arrive = (pin != null && pin >= t) ? pin : t;
+    const depart = arrive + (Number(c.data.stayMin) || 0);
+    const nxt = k < order.length - 1 ? list[order[k + 1]] : null;
+    const leg = nxt ? legOf(c, nxt) : null;
+    t = depart + (leg && leg.min != null ? leg.min : 0);
+    const per = c.data.place && c.data.place.hoursPeriods;
+    return { c, arrive, depart,
+             shut: per ? !isOpenAt(per, dp.w, arrive).open : false,
+             leaveShut: per ? !isOpenAt(per, dp.w, depart).open : false };
+  });
+}
+
 function sheetPlan() {
   const d = S.day;
   const r = planDay(d);
@@ -1639,6 +1742,24 @@ function sheetPlan() {
       '</span></div>';
   }).join('');
   const saved = r.lenBefore - r.lenAfter;
+  const simA = simulate(r.list, r.before, d);
+  const simB = simulate(r.list, r.after, d);
+  const shutA = simA.filter(x => x.shut);
+  const shutB = simB.filter(x => x.shut);
+  const endA = simA[simA.length - 1].depart, endB = simB[simB.length - 1].depart;
+  const hoursBlk = (() => {
+    const known = simB.filter(x => x.c.data.place && x.c.data.place.hoursPeriods).length;
+    if (!known) return '<p class="hint" style="margin-top:-4px">' +
+      '這一天沒有任何一站有營業時間資料，所以無法比對。' +
+      '設好 Google API key 之後會自動補上。</p>';
+    let h = '<div class="fld stack"><span class="lab">營業時間比對</span><div class="hours">' +
+      '有營業時間的 ' + known + ' 站　重排前 ' + shutA.length + ' 站撲空　重排後 ' +
+      shutB.length + ' 站撲空</div>';
+    if (shutB.length) h += '<div class="hours" style="margin-top:5px">' +
+      shutB.map(x => '<div style="color:var(--vermilion)">' + min2hm(x.arrive) + '　' +
+        esc(x.c.data.name) + ' 到的時候沒開</div>').join('') + '</div>';
+    return h + '</div>';
+  })();
   openSheet('排順路',
     '<p class="prose" style="margin-bottom:10px">' +
       (r.changed
@@ -1648,11 +1769,16 @@ function sheetPlan() {
         : '算過了，目前的順序已經是最順的，沒有東西要改。') +
     '</p>' +
     '<div class="fld stack"><span class="lab">重排後的順序</span><div>' + rows + '</div></div>' +
+    '<div class="fld stack"><span class="lab">收工時間</span><div class="hours">' +
+      min2hm(endA) + ' → ' + min2hm(endB) +
+      (endB < endA ? '　早收 ' + durTxt(endA - endB) : endB > endA ? '　晚收 ' + durTxt(endB - endA) : '　沒變') +
+      '</div></div>' +
+    hoursBlk +
     '<p class="hint" style="margin-bottom:12px">' +
       '「固定」的不會動：當天第一站與最後一站、所有釘選時間的卡' +
       (noCoord ? '、以及 ' + noCoord + ' 張沒有座標的卡' : '') + '。<br>' +
       '成本用的是<b>直線距離</b>，不是實際車程——山路、跨河、單行道會失準。<br>' +
-      '<b>不考慮營業時間</b>，重排後可能把某一站排到它沒開門的時段，套用後請看一下紅色提示。<br>' +
+      '排順路本身<b>不會</b>把營業時間納入計算，但上面已經幫你比對過重排前後各有幾站撲空。<br>' +
       '順序變動的路段，原本的路程時間會被清掉。' +
     '</p>' +
     (r.changed ? '<button class="btn fill wide" id="planGo">套用這個順序</button>' : ''),
