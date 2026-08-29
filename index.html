@@ -2,7 +2,7 @@
 <html lang="zh-Hant">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
 <title>Travel</title>
 <meta name="theme-color" content="#FBF6EA">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -41,6 +41,7 @@
   --accent-ink:#FFFFFF;     /* 當日色「上面」的字 */
   --accent-line:#0E7A78;    /* 當日色當線條／小字時的暗版，JS 換 */
   --accent-edge:transparent;/* 當日色太淡時補的髮絲邊，JS 換 */
+  --accent-rule:rgba(255,255,255,.28); /* 當日色卡片內的規線，JS 換 */
   --btn:#0E7A78;            /* 主要按鈕填色（對比不足時已推暗或推亮） */
   --btn-ink:#FFFFFF;
 
@@ -62,16 +63,16 @@
      iOS 沒有任何 CJK 等寬字型，所以等寬容器裡只放拉丁、數字、代號。 */
   --mono:ui-monospace,Menlo,monospace;
 
-  --r:12px; --r2:7px;       /* 圓角：控制元件比卡片再小一階 */
+  --r:8px; --r2:5px;        /* 圓角：控制元件比卡片再小一階 */
   --step:90ms;              /* 唯一的動作長度 */
   --rail:44px;              /* 書口分頁鐵 */
-  --bind:26px;              /* 裝訂邊（打孔那一側） */
+  --bind:10px;              /* 左緣留白 */
   --dock:60px;
 }
 @media (prefers-reduced-motion: reduce){ :root{ --step:1ms } }
 
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
-html,body{height:100%}
+html,body{height:100%;overflow-x:hidden;overscroll-behavior:none}
 body{
   font-family:var(--sans); background:var(--paper); color:var(--ink);
   font-size:15px; line-height:1.45; overscroll-behavior:none;
@@ -98,16 +99,7 @@ a{color:inherit}
   position:relative; overflow-y:auto; overflow-x:hidden;
   -webkit-overflow-scrolling:touch;
   padding:calc(env(safe-area-inset-top) + 10px) 0 calc(var(--dock) + env(safe-area-inset-bottom) + 24px) var(--bind);
-  scroll-padding-top:80px;
-}
-/* 書脊字：左緣那條板色不是空白，是手冊封底翻過來的書脊 */
-.spine{
-  position:fixed; left:0; width:var(--bind); z-index:3; pointer-events:none;
-  top:calc(env(safe-area-inset-top) + 14px); bottom:calc(var(--dock) + env(safe-area-inset-bottom) + 14px);
-  display:flex; align-items:flex-start; justify-content:center;
-  writing-mode:vertical-rl; text-orientation:mixed;
-  font-family:var(--mono); font-size:9.5px; letter-spacing:.24em; text-transform:uppercase;
-  color:var(--ink3); white-space:nowrap; overflow:hidden;
+  scroll-padding-top:80px; touch-action:pan-y;
 }
 
 /* ── 書口分頁鐵 ─────────────────────────────────────────── */
@@ -118,11 +110,11 @@ a{color:inherit}
 }
 .rail::-webkit-scrollbar{display:none}
 .tab{
-  position:relative; flex:0 0 auto; min-height:58px;
+  position:relative; flex:0 0 auto; min-height:0; height:60px;
   writing-mode:vertical-rl; text-orientation:mixed;
   display:flex; flex-direction:column; align-items:center; justify-content:center; gap:5px;
   font-family:var(--sans); font-size:12.5px; font-weight:600; letter-spacing:.02em;
-  color:#fff; border:none; border-radius:0 11px 11px 0;
+  border:none; border-radius:0 7px 7px 0;
   margin-left:3px; padding:10px 0; white-space:nowrap;
   box-shadow:inset 1px 0 0 rgba(0,0,0,.22), inset 0 0 0 1px var(--accent-edge);
 }
@@ -134,35 +126,35 @@ a{color:inherit}
 .tab.on::after{
   content:""; position:absolute; left:-6px; top:0; bottom:0; width:8px; background:inherit;
 }
-.tab.util{min-height:72px}
 
 /* ── 賽璐珞頁 ───────────────────────────────────────────── */
 .leaf{
-  position:relative; margin:0 12px 0 0; background:var(--leaf);
-  border:1px solid var(--rule); border-radius:var(--r); overflow:hidden;
+  position:relative; margin:0 12px 0 0;
+  background:var(--accent); color:var(--accent-ink);
+  border:1px solid var(--accent-edge); border-radius:var(--r); overflow:hidden;
 }
 .leaf + .leaf{margin-top:0}
 /* 下一站：卡片左緣一道當日色的書口，比整張換色安靜 */
-.leaf.top{background:var(--leaf-top);box-shadow:inset 4px 0 0 var(--accent)}
-.leaf.past{background:var(--leaf-sunk);color:var(--ink3)}
-.leaf.past .lname{color:var(--ink2);font-family:var(--display)}
-.leaf.drag{border-color:var(--ink1,var(--rule1));border-width:2px;position:relative;z-index:30}
+.leaf.top{box-shadow:inset 0 0 0 2px var(--accent-ink)}
+.leaf.past{opacity:.52}
+.leaf.drag{box-shadow:0 0 0 2px var(--ink);position:relative;z-index:30}
 .leaf.ghost{opacity:.28}
 
 /* 頁的內部格線：邊欄放機器語與刻印，主欄放內容 */
-.lrow{display:grid;grid-template-columns:76px 1fr;align-items:stretch}
+.lrow{display:grid;grid-template-columns:70px 1fr;align-items:stretch}
 .lmar{
-  padding:8px 8px 8px 10px; border-right:1px solid var(--rule2);
+  padding:8px 8px 8px 10px; border-right:1px solid var(--accent-rule);
   display:flex;flex-direction:column;gap:2px;align-items:flex-start;
 }
 .ltime{font-family:var(--mono);font-size:15.5px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1.1}
-.lstay{font-family:var(--mono);font-size:10.5px;color:var(--ink2);letter-spacing:.02em;line-height:1.35}
+.lstay{font-family:var(--mono);font-size:10.5px;opacity:.78;letter-spacing:.02em;line-height:1.35}
+.lstay.pin{opacity:1;font-weight:600}
 .lbody{padding:8px 12px 9px 10px;min-width:0;display:flex;gap:9px;align-items:flex-start}
 .lname{font-size:15.5px;font-weight:600;letter-spacing:-.012em;line-height:1.16;word-break:break-word}
 .lmeta{display:flex;flex-wrap:wrap;gap:2px 7px;align-items:center;margin-top:3px;
-  font-family:var(--mono);font-size:10.5px;color:var(--ink2);letter-spacing:.02em}
-.lmeta .sep{color:var(--ink3)}
-.laddr{font-family:var(--mono);font-size:11px;color:var(--ink2);margin-top:4px;
+  font-family:var(--mono);font-size:10.5px;opacity:.82;letter-spacing:.02em}
+.lmeta .sep{opacity:.55}
+.laddr{font-family:var(--mono);font-size:11px;opacity:.8;margin-top:4px;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 /* 類別刻印：單一線寬的線稿，不是彩色圓點 */
@@ -174,18 +166,16 @@ a{color:inherit}
   width:26px;height:26px;border-radius:6px;background:var(--accent);color:var(--accent-ink);
   margin-top:1px;box-shadow:inset 0 0 0 1px var(--accent-edge)}
 .tile .mark{width:16px;height:16px;stroke-width:2}
-.leaf.past .tile{opacity:.62}
 
 /* 選取＝打孔：孔裡看得到板色 */
 .punch{
   width:15px;height:15px;border-radius:50%;flex:0 0 auto;
-  border:1px solid var(--rule);background:transparent;display:inline-block;vertical-align:-2px;
+  border:1px solid currentColor;background:transparent;display:inline-block;vertical-align:-2px;
 }
-.punch.on{background:var(--accent);border-color:var(--rule)}
-.nextlab{display:inline-block;vertical-align:2px;margin-left:8px;background:var(--accent);
-  box-shadow:inset 0 0 0 1px var(--accent-edge);
-  color:var(--accent-ink);font-family:var(--mono);font-size:9.5px;letter-spacing:.1em;
-  padding:2px 6px 3px;border-radius:4px;font-weight:600}
+.punch.on{background:currentColor;border-color:currentColor}
+.nextlab{display:inline-block;vertical-align:2px;margin-left:8px;
+  background:var(--accent-ink);color:var(--accent);font-family:var(--mono);font-size:9.5px;
+  letter-spacing:.1em;padding:2px 6px 3px;border-radius:3px;font-weight:600}
 
 /* 勘誤條：朱紅，只有這裡用得到 */
 .errata{
@@ -203,21 +193,17 @@ a{color:inherit}
   padding-left:10px;
 }
 .leg{
-  display:inline-flex;align-items:center;gap:6px;background:var(--leaf);
-  border:1px solid var(--rule);padding:4px 12px 5px;border-radius:999px;
-  font-family:var(--mono);font-size:11px;letter-spacing:.03em;color:var(--ink);
+  display:inline-flex;align-items:center;gap:7px;background:transparent;
+  border:none;padding:3px 0 4px 2px;
+  font-family:var(--mono);font-size:11px;letter-spacing:.03em;color:var(--ink2);
   text-decoration:none;
 }
+.legedit{border:1px solid var(--rule);border-radius:4px;padding:0 5px 1px;font-size:10px}
 .leg.miss{color:var(--ink3)}
 /* 釘選造成的等待＝行程裡真的有空的時間，寫在板色上，跟紙上的路程分開 */
 .gap{font-family:var(--mono);font-size:10.5px;letter-spacing:.04em;color:var(--ink3);
   white-space:nowrap}
 .leg b{font-weight:600;font-size:11.5px}
-.legdir{
-  background:var(--leaf);border:1px solid var(--rule2);color:var(--ink2);
-  padding:4px 12px 5px;border-radius:999px;text-decoration:none;
-  font-family:var(--mono);font-size:10.5px;letter-spacing:.05em;
-}
 
 /* ── 頁首那一頁（板上不印字，所以標題也住在頁上） ─────────── */
 .head{margin:0 12px 10px 0;background:var(--leaf);border:1px solid var(--rule2);
@@ -319,17 +305,20 @@ textarea.inp{font-family:var(--serif);font-size:15px;line-height:1.65;letter-spa
 .cat.on{background:var(--accent);color:var(--accent-ink);border-color:var(--rule1);font-weight:600}
 
 /* 待辦（預定）：勾選就是打一個孔 */
-.todo{display:flex;align-items:flex-start;gap:9px;padding:7px 0;border-bottom:1px solid var(--rule2)}
+.todo{display:flex;align-items:flex-start;gap:9px;padding:7px 0;border-bottom:1px solid var(--accent-rule)}
 .todo .t{flex:1;font-size:14.5px;line-height:1.4}
-.todo.done .t{color:var(--ink3);text-decoration:line-through}
+.todo.done .t{opacity:.6;text-decoration:line-through}
 
 /* 卡片展開後的內文（宋體，一個尺寸做完） */
-.detail{border-top:1px solid var(--rule2);padding:0 12px 12px}
-.detail .blk{display:grid;grid-template-columns:76px 1fr;gap:0;padding-top:12px}
-.detail .blk > .lab{padding-right:10px;text-align:right;padding-top:4px}
+.detail{border-top:1px solid var(--accent-rule);padding:0 12px 12px}
+.detail .blk{display:grid;grid-template-columns:62px 1fr;gap:0;padding-top:12px}
+.detail .blk > .lab{padding-right:10px;text-align:right;padding-top:4px;color:inherit;opacity:.62}
 .detail .blk > div{min-width:0}
-.hours{font-family:var(--mono);font-size:11px;line-height:1.62;color:var(--ink2)}
-.hours .today{color:var(--ink);font-weight:600}
+/* 卡片變成當日色底之後，卡上的按鈕不能再用紙色那套邊框 */
+.detail .btn{border-color:currentColor;opacity:.92}
+.detail .btn:active{background:var(--accent-ink);color:var(--accent);border-color:var(--accent-ink)}
+.hours{font-family:var(--mono);font-size:11px;line-height:1.62;opacity:.85}
+.hours .today{opacity:1;font-weight:600}
 .linkline{display:block;font-family:var(--mono);font-size:12px;padding:3px 0;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .imgs{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}
@@ -443,26 +432,17 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 <!-- ══ 主畫面：分頁色板 ══ -->
 <div id="app" class="hide">
   <main class="plate" id="plate"></main>
-  <div class="spine" id="spine" aria-hidden="true"></div>
   <nav class="rail" id="rail" aria-label="日別分頁"></nav>
 </div>
 
 <div class="dock hide" id="dock">
-  <button class="btn" id="btnRoad" title="街上單手用：放大顯示下一站、幾點到、一鍵導航">下一站</button>
+  <button class="btn" id="btnEdit" title="排序、改路程、刪卡片">編輯</button>
   <button class="btn fill" id="btnAdd">＋ 新增</button>
+  <button class="btn" id="btnSet" title="旅程設定">設定</button>
   <div class="grow"></div>
   <button class="sync" id="syncBtn" title="同步狀態"></button>
 </div>
 
-<!-- ══ 上路模式 ══ -->
-<section class="road" id="road">
-  <div class="roadhead">
-    <button class="btn" id="roadClose" style="border-color:currentColor;color:inherit">← 完整行程</button>
-    <span id="roadDay" style="flex:1;text-align:right"></span>
-  </div>
-  <div class="roadcard" id="roadCard"></div>
-  <div class="roadstrip" id="roadStrip"></div>
-</section>
 
 <!-- ══ 抽頁 ══ -->
 <div class="sheetwrap" id="sheetWrap">
@@ -653,6 +633,9 @@ function applyBoard(hue) {
      不改使用者挑的顏色，只補邊。 */
   const faint = contrast(hex2rgb(hue), hex2rgb(PAPER)) < 1.6;
   r.setProperty('--accent-edge', faint ? 'rgba(27,26,22,.45)' : 'transparent');
+  /* 卡片內的規線要跟字色同一邊：白字配白線、黑字配黑線，否則會消失或太搶 */
+  r.setProperty('--accent-rule',
+    inkOn(hue) === '#FFFFFF' ? 'rgba(255,255,255,.30)' : 'rgba(0,0,0,.22)');
   const tc = $('meta[name=theme-color]'); if (tc) tc.setAttribute('content', '#FBF6EA');
 }
 const hueOf = i => HUES[((i % HUES.length) + HUES.length) % HUES.length];
@@ -735,6 +718,7 @@ const S = {
   day: 0,            // 目前分頁；-1 = 候選口袋
   open: null,        // 展開中的卡 id
   sched: [],         // 推算結果
+  edit: false,      // 編輯模式：可拖曳排序、可改路程
   syncing: false,
   syncErr: '',
   online: navigator.onLine,
@@ -1116,10 +1100,10 @@ async function renderGate() {
   h += '<div class="panel"><h3>建立新旅程</h3>' +
        '<div class="fld stack"><span class="lab">名稱</span>' +
        '<input class="inp" id="newName" placeholder="例：京都五日"></div>' +
-       '<div class="row" style="gap:8px">' +
-       '<div style="flex:1 1 150px"><span class="lab">出發日</span>' +
+       '<div style="display:grid;grid-template-columns:1fr 76px;gap:9px">' +
+       '<div style="min-width:0"><span class="lab">出發日</span>' +
        '<input class="inp" id="newStart" type="date" value="' + todayISO() + '"></div>' +
-       '<div style="flex:0 0 88px"><span class="lab">天數</span>' +
+       '<div style="min-width:0"><span class="lab">天數</span>' +
        '<input class="inp" id="newDays" type="number" min="1" max="60" value="5"></div></div>' +
        '<div class="fld stack" style="margin-top:12px"><span class="lab">密碼（共編用）</span>' +
        '<input class="inp" id="newPw" type="password" placeholder="至少 4 個字"></div>' +
@@ -1260,8 +1244,7 @@ function leaveTrip() {
   S.trip = null; S.key = null; S.cards = []; S.weather = {};
   $('#app').classList.add('hide');
   $('#dock').classList.add('hide');
-  $('#road').classList.remove('on');
-  applyBoard(HUES[3]);
+  applyBoard(HUES[0]);
   $('#gate').classList.add('on');
   renderGate();
 }
@@ -1320,15 +1303,13 @@ function gmDay(list, mode) {
   return u;
 }
 const nowMin = () => { const d = new Date(); return d.getHours() * 60 + d.getMinutes(); };
-const POCKET_HUE = '#565049';
-const UTIL_HUE = '#3B3833';
 
 /* ═══ 畫面 ═══════════════════════════════════════════════════ */
 function render() {
   if (!S.trip) return;
-  applyBoard(S.day < 0 ? POCKET_HUE : hueOf(S.day));
+  $('#app').classList.toggle('edit', S.edit);
+  applyBoard(S.day < 0 ? hueOf(S.trip.days) : hueOf(S.day));
   renderRail(); renderPlate(); renderSync();
-  if ($('#road').classList.contains('on')) renderRoad();
 }
 
 function renderRail() {
@@ -1338,20 +1319,21 @@ function renderRail() {
     const n = dayCards(i).length;
     const dp = dateParts(dayDate(i));
     h += '<button class="tab' + (S.day === i ? ' on' : '') + '" data-day="' + i + '" ' +
-         'style="background:' + hueOf(i) + ';min-height:' + (58 + Math.min(n, 9) * 7) + 'px" ' +
-         'aria-label="第 ' + (i + 1) + ' 天">Day ' + (i + 1) +
-         '<span class="td">' + dp.m + '/' + dp.d + ' 週' + WEEK[dp.w] + '</span></button>';
+         'style="background:' + hueOf(i) + ';color:' + inkOn(hueOf(i)) +
+         '" aria-label="第 ' + (i + 1) + ' 天">Day ' + (i + 1) +
+         '<span class="td">' + dp.m + '/' + dp.d + '</span></button>';
   }
-  h += '<button class="tab util cjk' + (S.day === -1 ? ' on' : '') + '" data-day="-1" ' +
-       'style="background:' + (S.day === -1 ? POCKET_HUE : UTIL_HUE) + '">候選口袋</button>';
-  h += '<button class="tab util cjk" id="tabSet" style="background:' + UTIL_HUE + '">旅程設定</button>';
+  /* 候選口袋跟其他分頁同一套規則與色票，用色輪的下一個顏色 */
+  h += '<button class="tab cjk' + (S.day === -1 ? ' on' : '') + '" data-day="-1" ' +
+       'style="background:' + hueOf(S.trip.days) + ';color:' + inkOn(hueOf(S.trip.days)) +
+       '" aria-label="候選口袋">待' +
+       '<span class="td">' + dayCards(-1).length + '</span></button>';
   r.innerHTML = h;
   $$('[data-day]', r).forEach(n => n.onclick = () => {
     S.day = parseInt(n.dataset.day, 10); S.open = null;
     render(); $('#plate').scrollTop = 0;
     if (S.day >= 0) { ensureLegs(S.day); loadWeather(S.day); }
   });
-  $('#tabSet').onclick = sheetTrip;
 }
 
 function leafHTML(r, i, flags) {
@@ -1390,8 +1372,8 @@ function leafHTML(r, i, flags) {
       '<div class="lmar" data-grip="' + c.id + '">' +
         '<div class="ltime">' + min2hm(r.arrive) + '</div>' +
         '<div class="lstay">停 ' + durMin(d.stayMin) + '</div>' +
-        (d.pinTime ? '<div class="lstay" style="color:var(--ink)">釘 ' + esc(d.pinTime) + '</div>' : '') +
-        '<span class="grip"></span>' +
+        (d.pinTime ? '<div class="lstay pin">釘 ' + esc(d.pinTime) + '</div>' : '') +
+        (S.edit ? '<span class="grip"></span>' : '') +
       '</div>' +
       '<div class="lbody" data-open="' + c.id + '">' +
         '<div style="min-width:0;flex:1">' +
@@ -1452,10 +1434,7 @@ function detailHTML(c, r) {
   h += '<div class="blk"><span class="lab">動作</span><div class="row">' +
     '<button class="btn" data-edit="' + c.id + '">編輯</button>' +
     '<a class="btn" href="' + gmPlace(c) + '" target="_blank" rel="noopener">' + mark('pin','sm') + ' 地圖</a>' +
-    '<button class="btn" data-pin="' + c.id + '">' + (d.pinTime ? '改釘選' : '釘選時間') + '</button>' +
-    '<button class="btn" data-move="' + c.id + '">移到…</button>' +
     (isStay && c.dayIndex >= 0 ? '<button class="btn" data-dup="' + c.id + '">複製到隔天開頭</button>' : '') +
-    '<button class="btn" data-del="' + c.id + '" style="color:var(--vermilion);border-color:var(--vermilion)">刪除</button>' +
     '</div></div>';
   return h + '</div>';
 }
@@ -1474,9 +1453,6 @@ function renderPlate() {
   }
 
   let h = '';
-  const spine = $('#spine');
-  if (spine) spine.textContent = 'Travel · ' + (S.trip.name || '') +
-    (d >= 0 ? ' · Day ' + (d + 1) : ' · Pocket');
   if (d >= 0) {
     const dp = dateParts(dayDate(d));
     const w = S.weather[d];
@@ -1491,10 +1467,7 @@ function renderPlate() {
         '<div class="dnum">DAY</div><div class="dbig">' + (d + 1) + '</div></div>' +
       '<div class="headbody">' +
         '<div class="ddate">' + dp.m + ' 月 ' + dp.d + ' 日<span style="font-size:15px;color:var(--ink2)"> 週' + WEEK[dp.w] + '</span></div>' +
-        '<div class="dsub">' + (w ? (WCODE[w.code] || '') + ' ' + w.tmin + '–' + w.tmax + '°C · ' : '') +
-          list.length + ' 個行程' +
-          (sched.length ? ' · ' + min2hm(sched[0].arrive) + '–' + min2hm(sched[sched.length-1].depart) : '') +
-        '</div>' +
+        (w ? '<div class="dsub">' + (WCODE[w.code] || '') + ' ' + w.tmin + '–' + w.tmax + '°C</div>' : '') +
         (firstPin ? '<div class="dsub" style="color:' + (firstPin.pinDrift > 0 ? 'var(--vermilion)' : 'var(--ink)') + '">' +
           '距 ' + min2hm(firstPin.pinTarget) + ' ' + esc(firstPin.pinName) + '：' +
           (firstPin.pinDrift > 0 ? '已慢 ' + durTxt(firstPin.pinDrift) : '尚有餘裕 ' + durTxt(-firstPin.pinDrift)) +
@@ -1536,15 +1509,16 @@ function renderPlate() {
       const leg = c.data.leg || {};
       const m = modeBy(leg.mode || S.trip.defaultMode);
       const gap = sched[i + 1].wait;
-      h += '<div class="hinge">' +
-        '<button class="leg' + (leg.min == null ? ' miss' : '') + '" data-leg="' + c.id + '">' +
-          mark(m.mark, 'sm') + (leg.min == null ? '<span>路程未知</span>' :
-            '<b>' + leg.min + ' 分</b>' + (leg.meters ? '<span>' + dist(leg.meters) + '</span>' : '')) +
-        '</button>' +
-        (gap > 20 ? '<span class="gap">空檔 ' + durTxt(gap) + '</span>' : '') +
-        '<a class="legdir" href="' + gmDir(c, nx, leg.mode || S.trip.defaultMode) +
-          '" target="_blank" rel="noopener">路線 ↗</a>' +
-      '</div>';
+      const body = mark(m.mark, 'sm') + (leg.min == null ? '<span>路程未知</span>' :
+        '<b>' + leg.min + ' 分</b>' + (leg.meters ? '<span>' + dist(leg.meters) + '</span>' : '')) +
+        (gap > 20 ? '<span class="gap">空檔 ' + durTxt(gap) + '</span>' : '');
+      /* 平常點下去就是開 Google 路線；編輯模式才是改這一段的數字與交通方式。 */
+      h += '<div class="hinge">' + (S.edit
+        ? '<button class="leg' + (leg.min == null ? ' miss' : '') + '" data-leg="' + c.id + '">' +
+            body + '<span class="legedit">改</span></button>'
+        : '<a class="leg' + (leg.min == null ? ' miss' : '') + '" href="' +
+            gmDir(c, nx, leg.mode || S.trip.defaultMode) + '" target="_blank" rel="noopener">' +
+            body + '</a>') + '</div>';
     }
   });
 
@@ -1572,10 +1546,11 @@ function renderSync() {
 <style>
 .insertline{position:absolute;left:0;right:12px;height:4px;border-radius:2px;background:var(--vermilion);
   z-index:25;pointer-events:none;box-shadow:0 0 0 1px rgba(0,0,0,.3)}
-.lmar{touch-action:none;cursor:grab}
+.lmar{cursor:default}
+.edit .lmar{touch-action:none;cursor:grab}
 /* 抓握處：三條細規線，比打孔輕，不搶類別方磚 */
 .lmar .grip{display:block;width:15px;height:6px;margin-top:5px;
-  background:repeating-linear-gradient(to bottom,var(--rule) 0 1px,transparent 1px 3px);opacity:.5}
+  background:repeating-linear-gradient(to bottom,currentColor 0 1px,transparent 1px 3px);opacity:.6}
 </style>
 <script>
 'use strict';
@@ -1602,15 +1577,8 @@ function bindPlate() {
   });
   $$('[data-grip]', p).forEach(n => n.addEventListener('pointerdown', e => gripDown(e, n.dataset.grip)));
   $$('[data-edit]', p).forEach(n => n.onclick = () => sheetEdit(cardById(n.dataset.edit)));
-  $$('[data-pin]',  p).forEach(n => n.onclick = () => sheetPin(cardById(n.dataset.pin)));
-  $$('[data-move]', p).forEach(n => n.onclick = () => sheetMove(cardById(n.dataset.move)));
   $$('[data-leg]',  p).forEach(n => n.onclick = () => sheetLeg(cardById(n.dataset.leg)));
   $$('[data-dup]',  p).forEach(n => n.onclick = () => dupToNextDay(cardById(n.dataset.dup)));
-  $$('[data-del]',  p).forEach(n => n.onclick = async () => {
-    const c = cardById(n.dataset.del);
-    if (!confirm('刪除「' + (c.data.name || '這張卡') + '」？')) return;
-    await delCard(c); S.open = null; render();
-  });
   $$('[data-hours]', p).forEach(n => n.onclick = e => {
     e.stopPropagation();
     const box = n.closest('.hours').querySelector('.hidden-hours');
@@ -1639,6 +1607,7 @@ function bindPlate() {
 /* ── 拖曳：抓左邊的時刻欄，放開才落位；拖的時候畫一條插入標線 ── */
 let DRAG = null;
 function gripDown(e, id) {
+  if (!S.edit) return;                    // 只有編輯模式才拖得動
   if (e.pointerType === 'mouse' && e.button !== 0) return;
   const leaf = e.currentTarget.closest('.leaf');
   DRAG = { id, leaf, startY: e.clientY, moved:false, line:null, targetIdx:0 };
@@ -1785,10 +1754,20 @@ function sheetEdit(c) {
     '<div class="fld stack"><span class="lab">圖片網址（一行一個）</span>' +
     '<textarea class="inp" id="eImgs" style="min-height:56px;font-family:var(--mono);font-size:13px">' +
     esc((d.images || []).join('\n')) + '</textarea></div>' +
+    '<div class="fld stack"><span class="lab">放在哪一天</span>' +
+    '<select class="inp" id="eDay">' +
+      '<option value="-1"' + (c.dayIndex === -1 ? ' selected' : '') + '>候選口袋</option>' +
+      Array.from({ length: S.trip.days }, (_, i) => {
+        const dp = dateParts(dayDate(i));
+        return '<option value="' + i + '"' + (c.dayIndex === i ? ' selected' : '') +
+               '>第 ' + (i + 1) + ' 天 · ' + dp.m + '/' + dp.d + '</option>';
+      }).join('') + '</select></div>' +
     '<div class="row" style="margin-bottom:14px">' +
     '<button class="btn" id="eRefetch">重新抓 Google 資料</button>' +
     (d.place ? '<button class="btn" id="eClearPlace">清除地點資料</button>' : '') + '</div>' +
-    '<button class="btn fill wide" id="eSave">儲存</button>',
+    '<button class="btn fill wide" id="eSave">儲存</button>' +
+    '<button class="btn wide" id="eDel" style="margin-top:9px;color:var(--vermilion);' +
+    'border-color:var(--vermilion)">刪除這張卡</button>',
     () => {
       let cat = d.catId;
       $$('#eCats [data-cat]').forEach(n => n.onclick = () => {
@@ -1805,7 +1784,13 @@ function sheetEdit(c) {
       };
       const cp = $('#eClearPlace');
       if (cp) cp.onclick = async () => { d.place = null; d.leg = null; await touch(c); closeSheet(); render(); };
+      $('#eDel').onclick = async () => {
+        if (!confirm('刪除「' + (d.name || '這張卡') + '」？')) return;
+        await delCard(c); closeSheet(); S.open = null; render();
+      };
       $('#eSave').onclick = async () => {
+        const toDay = parseInt($('#eDay').value, 10);
+        if (toDay !== c.dayIndex) await moveCard(c, toDay, null);
         d.name = $('#eName').value.trim();
         d.catId = cat;
         d.stayMin = clamp(parseInt($('#eStay').value, 10) || 0, 0, 1440);
@@ -1822,45 +1807,11 @@ function sheetEdit(c) {
         });
         d.images = $('#eImgs').value.split('\n').map(s => s.trim()).filter(Boolean);
         await touch(c); closeSheet();
+        S.day = c.dayIndex;
         if (S.day >= 0) ensureLegs(S.day);
         render();
       };
     });
-}
-
-function sheetPin(c) {
-  openSheet('釘選時間',
-    '<p class="prose" style="margin-bottom:12px">釘選之後，這一站不會被前面的行程推走；' +
-    '到得早就等，到得晚會標紅並把落後量一路帶下去。</p>' +
-    '<div class="fld stack"><span class="lab">固定在幾點</span>' +
-    '<input class="inp" id="pinT" type="time" value="' + esc(c.data.pinTime || '') + '"></div>' +
-    '<button class="btn fill wide" id="pinGo">釘選</button>' +
-    (c.data.pinTime ? '<button class="btn wide" id="pinClr" style="margin-top:8px">取消釘選</button>' : ''),
-    () => {
-      $('#pinGo').onclick = async () => { c.data.pinTime = $('#pinT').value || ''; await touch(c); closeSheet(); render(); };
-      const x = $('#pinClr'); if (x) x.onclick = async () => { c.data.pinTime = ''; await touch(c); closeSheet(); render(); };
-    });
-}
-
-function sheetMove(c) {
-  let h = '<div class="cats" style="flex-direction:column;align-items:stretch;gap:0">';
-  h += '<button class="triprow" data-to="-1"><span class="tripswatch" style="background:' + POCKET_HUE + '"></span>' +
-       '<span class="tripname"><b>候選口袋</b></span></button>';
-  for (let i = 0; i < S.trip.days; i++) {
-    const dp = dateParts(dayDate(i));
-    h += '<button class="triprow" data-to="' + i + '">' +
-         '<span class="tripswatch" style="background:' + hueOf(i) + '"></span>' +
-         '<span class="tripname"><b>第 ' + (i + 1) + ' 天</b><span>' + dp.m + '/' + dp.d +
-         ' 週' + WEEK[dp.w] + ' · ' + dayCards(i).length + ' 個行程</span></span></button>';
-  }
-  h += '</div>';
-  openSheet('移到…', h, () => {
-    $$('[data-to]').forEach(n => n.onclick = async () => {
-      await moveCard(c, parseInt(n.dataset.to, 10), null);
-      closeSheet(); S.day = c.dayIndex; S.open = c.id; render();
-      if (S.day >= 0) ensureLegs(S.day);
-    });
-  });
 }
 
 function sheetLeg(c) {
@@ -2036,10 +1987,12 @@ function sheetTrip() {
   openSheet('旅程設定',
     '<div class="fld stack"><span class="lab">名稱</span>' +
     '<input class="inp" id="tName" value="' + esc(t.name) + '"></div>' +
-    '<div class="row" style="gap:10px;margin-bottom:13px">' +
-      '<div style="flex:1"><span class="lab">出發日</span>' +
+    /* date input 在 iOS 上會撐出自己的寬度，用 flex 會擠爆隔壁；
+       改成 grid 並讓兩欄都 min-width:0，才不會疊在一起。 */
+    '<div style="display:grid;grid-template-columns:1fr 76px;gap:10px;margin-bottom:13px">' +
+      '<div style="min-width:0"><span class="lab">出發日</span>' +
       '<input class="inp" id="tStart" type="date" value="' + esc(t.startDate) + '"></div>' +
-      '<div style="flex:0 0 92px"><span class="lab">天數</span>' +
+      '<div style="min-width:0"><span class="lab">天數</span>' +
       '<input class="inp" id="tDays" type="number" min="1" max="60" value="' + (t.days || 1) + '"></div>' +
     '</div>' +
     '<div class="fld stack"><span class="lab">預設交通方式</span><div class="cats" id="tModes">' +
@@ -2117,72 +2070,6 @@ function sheetTrip() {
     });
 }
 
-/* ═══ 上路模式 ═══════════════════════════════════════════════ */
-function openRoad() {
-  const ti = todayIndex();
-  if (ti >= 0) S.day = ti;
-  else if (S.day < 0) S.day = 0;
-  $('#road').classList.add('on');
-  render();
-}
-function renderRoad() {
-  const d = S.day < 0 ? 0 : S.day;
-  const sched = computeSchedule(d);
-  const ti = todayIndex();
-  const isToday = d === ti;
-  const n = nowMin();
-  let i = isToday ? sched.findIndex(r => r.depart > n) : 0;
-  if (!sched.length) i = -1;
-  const dp = dateParts(dayDate(d));
-  $('#roadDay').textContent = '第 ' + (d + 1) + ' 天 · ' + dp.m + '/' + dp.d + ' 週' + WEEK[dp.w] +
-    (isToday ? ' · 今天' : '');
-
-  const card = $('#roadCard');
-  if (i < 0) {
-    card.innerHTML = '<div class="roadname">' + (sched.length ? '今天走完了。' : '這一天還沒有行程。') +
-      '</div><div class="roadsub">' + (sched.length ? '辛苦了。' : '回行程表加幾個地方。') + '</div>';
-  } else {
-    const r = sched[i], c = r.card, p = c.data.place || {};
-    const cat = catBy(c.data.catId);
-    const nx = sched[i + 1];
-    const leg = c.data.leg || {};
-    const arriving = isToday && r.arrive > n;
-    card.innerHTML =
-      '<div class="roadeta"><span class="lab">' + (arriving ? '預計抵達' : '現在在') + '</span>' +
-        '<span class="big">' + min2hm(r.arrive) + '</span>' +
-        (arriving ? '<span class="lab">還有 ' + durTxt(r.arrive - n) + '</span>'
-                  : '<span class="lab">停到 ' + min2hm(r.depart) + '</span>') + '</div>' +
-      '<div class="roadname">' + esc(c.data.name || '未命名') + '</div>' +
-      '<div class="roadsub">' +
-        (cat ? cat.name + ' · ' : '') + '停留 ' + durTxt(c.data.stayMin) +
-        (r.hours && !r.hours.unknown ? (r.hours.open ? ' · 有開' : ' · 到時沒開') : '') +
-        (p.address ? '<br>' + esc(p.address) : '') +
-      '</div>' +
-      '<div class="row" style="margin-top:14px">' +
-        '<a class="btn fill" href="' + gmPlace(c) + '" target="_blank" rel="noopener" ' +
-        'style="min-height:46px;flex:1">導航到這裡 ↗</a></div>' +
-      (nx
-        ? '<div class="roadnext">下一站 ' + esc(nx.card.data.name) + '<br>' +
-            (leg.min != null ? modeBy(leg.mode || S.trip.defaultMode).name + ' ' + leg.min + ' 分 · ' : '') +
-            min2hm(nx.arrive) + ' 到　' +
-            '<a href="' + gmDir(c, nx.card, leg.mode || S.trip.defaultMode) + '" target="_blank" ' +
-            'rel="noopener">看這段路線 ↗</a></div>'
-        : '<div class="roadnext">這是今天最後一站。</div>') +
-      (sched.length > i + 1
-        ? '<div class="roadrest"><div class="lab" style="margin-bottom:2px">今天剩下的</div>' +
-          sched.slice(i + 1).map(x =>
-            '<div class="restrow' + (x.late > 0 ? ' late' : '') + '">' +
-              '<span class="t">' + min2hm(x.arrive) + '</span>' +
-              '<span class="n">' + esc(x.card.data.name || '未命名') + '</span>' +
-              '<span class="g">停 ' + durMin(x.card.data.stayMin) + '</span>' +
-            '</div>').join('') +
-          '</div>'
-        : '');
-  }
-  $('#roadStrip').innerHTML = sched.map((r, k) =>
-    '<i class="' + (k === i ? 'on' : (k < i ? 'past' : '')) + '"></i>').join('');
-}
-
 /* ═══ 啟動 ═══════════════════════════════════════════════════ */
 async function boot() {
   applyBoard(HUES[3]);
@@ -2190,8 +2077,13 @@ async function boot() {
   await renderGate();
 
   $('#btnAdd').onclick = sheetAdd;
-  $('#btnRoad').onclick = openRoad;
-  $('#roadClose').onclick = () => { $('#road').classList.remove('on'); render(); };
+  $('#btnSet').onclick = sheetTrip;
+  $('#btnEdit').onclick = () => {
+    S.edit = !S.edit; S.open = null;
+    $('#btnEdit').classList.toggle('fill', S.edit);
+    $('#btnEdit').textContent = S.edit ? '完成' : '編輯';
+    render();
+  };
   $('#sheetClose').onclick = closeSheet;
   $('#sheetScrim').onclick = closeSheet;
   $('#syncBtn').onclick = () => syncNow();
