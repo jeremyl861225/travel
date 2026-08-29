@@ -140,7 +140,11 @@ const out = {
   },
   cards,
 };
-writeFileSync(new URL('../docs/refs/tohoku-2026.travel.json', import.meta.url), JSON.stringify(out, null, 1));
+/* 行程內容不進版控——它只該存在 Supabase 與這台機器的暫存區。
+   輸出到 repo 外面，再用 App 的「旅程設定 → 匯出／匯入」把檔案讀進去。 */
+const DEST = '/Users/jeremy/Desktop/Claude code/workspace/work/travel-imports/tohoku-2026.travel.json';
+writeFileSync(DEST, JSON.stringify(out, null, 1));
+console.log('寫到 ' + DEST);
 
 console.log('轉出 ' + cards.length + ' 張卡，' + byDay.size + ' 天');
 console.log('每日出發：' + Object.entries(dayStarts).map(([d,t]) => 'D' + (+d+1) + ' ' + t).join('　'));
