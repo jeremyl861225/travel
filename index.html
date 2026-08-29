@@ -56,9 +56,13 @@
      （實測 "Helvetica Neue Condensed Bold" 抓不到、HelveticaNeue-CondensedBold 抓得到）。
      這支永遠是粗的，所以只用在字重 600 的標題上。
      中文沒有壓縮字面，會落到蘋方，正常寬度——這是要的效果。 */
+  /* 標題與站名的中文走宋體。Songti TC 有真的 Bold（700），
+     字重寫 600 時瀏覽器會選 ≥600 的那一面，也就是真 Bold，不會被假造。 */
   --display:"HelveticaNeue-CondensedBold","Avenir Next Condensed",
-            "Helvetica Neue",Helvetica,"PingFang TC",sans-serif;
-  --serif:Palatino,"Songti TC",serif;
+            "Helvetica Neue",Helvetica,"Songti TC",serif;
+  /* 內文改走黑體：宋體的橫畫是髮絲，14.5px 在 iPhone 上會整段泛灰、筆畫斷裂。
+     襯線留給標題用。 */
+  --serif:"Helvetica Neue",Helvetica,"PingFang TC",sans-serif;
   /* 數字與英文改用 Avenir Next（iOS/macOS 內建）。它不是等寬字，
      時刻的直豎對齊改靠 tabular-nums——那個特性只讓「數字」等寬，
      英文字母仍是正常字寬，所以比 SF Mono 開闊也更耐看。
@@ -170,7 +174,8 @@ a{color:inherit}
 .lstay{font-family:var(--mono);font-size:10.5px;opacity:.78;letter-spacing:.02em;line-height:1.35}
 .lstay.pin{opacity:1;font-weight:600}
 .lbody{padding:8px 12px 9px 10px;min-width:0;display:flex;gap:9px;align-items:flex-start}
-.lname{font-size:15.5px;font-weight:600;letter-spacing:-.012em;line-height:1.16;word-break:break-word}
+.lname{font-family:var(--display);font-size:15.5px;font-weight:600;letter-spacing:-.012em;
+  line-height:1.16;word-break:break-word}
 .lmeta{display:flex;flex-wrap:wrap;gap:2px 7px;align-items:center;margin-top:3px;
   font-family:var(--mono);font-size:10.5px;opacity:.82;letter-spacing:.02em}
 .lmeta .sep{opacity:.55}
@@ -329,7 +334,7 @@ textarea.inp{font-family:var(--serif);font-size:15px;line-height:1.65;letter-spa
 .fld.stack > .lab{text-align:left;padding-top:0;margin-bottom:4px}
 .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 /* 拉丁的 1.5 對繁中太緊，內文要 1.75–1.85 */
-.prose{font-family:var(--serif);font-size:14.5px;line-height:1.62;
+.prose{font-family:var(--serif);font-size:14.5px;line-height:1.72;
   font-variant-numeric:normal;font-feature-settings:normal;
   hanging-punctuation:allow-end}
 
@@ -367,7 +372,7 @@ textarea.inp{font-family:var(--serif);font-size:15px;line-height:1.65;letter-spa
 .gate.on{display:block}
 .brand{color:var(--ink2);font-family:var(--mono);letter-spacing:.3em;
   text-transform:uppercase;font-size:10.5px}
-.brandbig{color:var(--ink);font-size:31px;font-weight:600;letter-spacing:-.04em;
+.brandbig{font-family:var(--display);color:var(--ink);font-size:31px;font-weight:600;letter-spacing:-.04em;
   line-height:.96;margin:4px 0 15px;font-family:var(--display)}
 .panel{background:var(--leaf);border:1px solid rgba(27,26,22,.20);border-radius:var(--r);
   padding:12px 13px 13px;margin-bottom:9px}
