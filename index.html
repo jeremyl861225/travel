@@ -333,7 +333,17 @@ a{color:inherit}
 .dbig{font-size:42px;font-weight:600;line-height:.86;letter-spacing:-.05em;margin-top:1px;
   font-family:var(--display);-webkit-text-stroke:.9px currentColor}
 .headbody{padding:9px 12px 10px}
-.ddate{font-size:15.5px;font-weight:600;letter-spacing:-.015em;line-height:1.2;font-family:var(--display)}
+.ddate{font-size:15.5px;font-weight:600;letter-spacing:-.015em;line-height:1.2;
+  font-family:var(--display);display:flex;align-items:baseline;gap:8px}
+/* 天氣：日期同一行、靠右、最輕的一階。它是背景，不是要你動作的東西。 */
+.dwx{margin-left:auto;font-family:var(--mono);font-size:10.5px;font-weight:500;
+  letter-spacing:.02em;color:var(--ink3);white-space:nowrap;flex:0 0 auto}
+/* 「現在」：整個日首最重的一行，前面那道朱紅就是時間軸上那根線。 */
+.dnow{display:flex;align-items:baseline;gap:6px;margin-top:4px;
+  font-family:var(--mono);font-size:12px;line-height:1.45;color:var(--ink)}
+.dnow b{font-family:var(--serif);font-size:13px;font-weight:600}
+.nowtick{flex:0 0 auto;width:2px;height:11px;background:var(--vermilion);
+  border-radius:1px;transform:translateY(1px)}
 .ddate .num{font-family:var(--mono);font-size:17px;letter-spacing:-.02em}
 .dsub{font-family:var(--mono);font-size:10.5px;color:var(--ink2);margin-top:3px;letter-spacing:.02em;line-height:1.42}
 .startrow{display:flex;align-items:center;gap:7px;flex-wrap:nowrap;padding:0 12px 11px 10px}
@@ -650,7 +660,7 @@ let HUES = hueSet(6);                    // openTrip() 會依實際天數重算
 /* 建置代號。手機上「改了但看起來沒變」十之八九是舊快取，
    在設定裡把這個字串印出來，一眼就知道手上這份是不是新的。
    改版時跟著 sw.js 的 CACHE 一起跳號。 */
-const BUILD = '2026-08-30 · v23';
+const BUILD = '2026-08-30 · v24';
 const VERMILION = '#D62D14';
 /* 已經過去的分頁用的極淺灰。比紙略深一點點，形狀還在但退到背景去。 */
 const PAST_TAB = '#D9D6CE';
@@ -1049,6 +1059,31 @@ async function rpc(fn, args) {
   return txt ? JSON.parse(txt) : null;
 }
 
+/* 內容一樣就不是衝突。同一台裝置連續推送、或兩個人同時按了同一個
+   「重新計算」，伺服器的樂觀鎖照樣會擋下來——但兩邊的內容其實一模一樣。
+   這時候跳「有人改了這張」是假警報，而假警報出現一次，
+   真的撞車時就沒人會認真看了。
+   用穩定排序的 JSON 比對，key 的順序不同不算差異。 */
+function stableJSON(v) {
+  if (v === null || typeof v !== 'object') return JSON.stringify(v);
+  if (Array.isArray(v)) return '[' + v.map(stableJSON).join(',') + ']';
+  return '{' + Object.keys(v).sort().map(k => JSON.stringify(k) + ':' + stableJSON(v[k])).join(',') + '}';
+}
+/* 比對前先剝掉記帳欄位。hoursAt 是「上次跟 Google 問營業時間的時間」、
+   leg.at 是「上次算路程的時間」——它們記的是我們什麼時候查的，
+   不是行程本身。兩個人同一天各自開 app，兩邊都會刷新這個時戳，
+   內容明明一樣卻會被判成撞車。 */
+function contentOf(d) {
+  const x = JSON.parse(JSON.stringify(d || {}));
+  if (x.place) delete x.place.hoursAt;
+  if (x.leg) delete x.leg.at;
+  return x;
+}
+function sameCard(a, b) {
+  return a && b && a.dayIndex === b.dayIndex && a.orderKey === b.orderKey &&
+         stableJSON(contentOf(a.data)) === stableJSON(contentOf(b.data));
+}
+
 async function pushCard(c) {
   const payload = await encJSON(c.data, S.key);
   const rows = await rpc('travel_card_push', {
@@ -1059,10 +1094,16 @@ async function pushCard(c) {
   const row = rows && rows[0];
   if (!row) throw new Error('EMPTY_PUSH');
   if (row.ok === false) {
-    /* 別人先改了同一張。不猜誰對——把對方的版本擺出來讓人選。 */
-    c.conflict = { data: await decJSON(row.payload, S.key), rev: row.rev,
-                   by: row.updated_by, at: row.updated_at,
-                   dayIndex: row.day_index, orderKey: row.order_key };
+    /* 別人先改了同一張。不猜誰對——把對方的版本擺出來讓人選。
+       但先比一次內容：一樣的話那不是衝突，直接收下對方的版本號就好。 */
+    const theirs = { data: await decJSON(row.payload, S.key),
+                     dayIndex: row.day_index, orderKey: row.order_key };
+    if (sameCard(theirs, c)) {
+      c.rev = row.rev; c.dirty = false; c.conflict = null; c.updatedAt = row.updated_at;
+      await dbPut('cards', c);
+      return true;
+    }
+    c.conflict = Object.assign(theirs, { rev: row.rev, by: row.updated_by, at: row.updated_at });
     await dbPut('cards', c);
     return false;
   }
@@ -1080,9 +1121,16 @@ async function pullCards() {
     if (!newest || row.updated_at > newest) newest = row.updated_at;
     const local = S.cards.find(c => c.id === row.id);
     if (local && local.dirty && local.rev !== row.rev) {
-      local.conflict = { data: await decJSON(row.payload, S.key), rev: row.rev,
-                         by: row.updated_by, at: row.updated_at,
-                         dayIndex: row.day_index, orderKey: row.order_key };
+      const theirs = { data: await decJSON(row.payload, S.key),
+                       dayIndex: row.day_index, orderKey: row.order_key };
+      if (sameCard(theirs, local)) {
+        /* 內容相同＝不是衝突，收下版本號、清掉待傳旗標就好。 */
+        local.rev = row.rev; local.dirty = false; local.conflict = null;
+        local.updatedAt = row.updated_at;
+        await dbPut('cards', local);
+        continue;
+      }
+      local.conflict = Object.assign(theirs, { rev: row.rev, by: row.updated_by, at: row.updated_at });
       await dbPut('cards', local);
       continue;
     }
@@ -1273,6 +1321,7 @@ async function ensureHours(d) {
   if (!need.length) return;
   for (const c of need) {
     const p = c.data.place;
+    const before = stableJSON(contentOf(c.data));
     try {
       const res = await gmap('resolve', p.placeId
         ? { url: pidUrl(p.placeId) }
@@ -1306,8 +1355,11 @@ async function ensureHours(d) {
           }
         } catch (e) { /* 拿不到日文地址不是錯誤，其餘照常 */ }
       }
+      /* 只有時戳變的話，寫本機就好——推上去只會製造一次沒有內容差異的
+         版本衝突。hoursAt 本來就是每台裝置各自的快取記號。 */
+      const changed = stableJSON(contentOf(c.data)) !== before;
       p.hoursAt = new Date().toISOString();
-      await touch(c);
+      if (changed) await touch(c); else await dbPut('cards', c);
     } catch (e) {
       if (e.code === 'NO_API_KEY') return;   // 沒設 key 就整批放棄，不要逐張報錯
     }
@@ -1914,13 +1966,17 @@ function renderPlate() {
       '<div class="headbody">' +
         /* 數字走 Avenir Next（跟時刻同一支），中文才走明體。
            不分開的話日期會用壓縮體的數字，跟卡片上的時刻長得不一樣。 */
+        /* 天氣併進日期那一行靠右。它是背景資訊不是事件——獨佔一行的話，
+           會跟「現在」擠在一起，而且比「現在」還顯眼，輕重就顛倒了。 */
         '<div class="ddate"><span class="num">' + dp.m + '</span> 月 <span class="num">' +
           dp.d + '</span> 日<span style="font-size:15px;color:var(--ink2)"> 週' +
-          WEEK[dp.w] + '</span></div>' +
-        (w && w.tooFar
-          ? '<div class="dsub">天氣　' + (() => { const q = dateParts(w.from);
-              return q.m + '/' + q.d; })() + ' 起看得到（預報只到 16 天）</div>'
-          : w ? '<div class="dsub">' + (WCODE[w.code] || '') + ' ' + w.tmin + '–' + w.tmax + '°C</div>' : '') +
+          WEEK[dp.w] + '</span>' +
+          (w && w.tooFar
+            ? '<span class="dwx">天氣 ' + (() => { const q = dateParts(w.from);
+                return q.m + '/' + q.d; })() + ' 起</span>'
+            : w ? '<span class="dwx">' + (WCODE[w.code] || '') + ' ' +
+                  w.tmin + '–' + w.tmax + '°C</span>' : '') +
+        '</div>' +
         /* 公休與撲空要在日首就看得到。點進每一張卡才發現「今天週一休館」
            已經太晚了——那是要換天的決定，不是換時間的決定。 */
         /* 今天：直接講「現在應該在哪」。行程表最沒用的時刻，
@@ -1929,14 +1985,18 @@ function renderPlate() {
           if (d !== ti || !sched.length) return '';
           const n = nowMin();
           const at = sched.find(x => n >= x.arrive && n < x.depart);
-          if (at) return '<div class="dsub" style="color:var(--accent-line)">現在 ' +
-            min2hm(n) + '　應該在 <b>' + esc(at.card.data.name || '') + '</b>，還有 ' +
+          /* 用跟時間軸上那根「現在」同一個朱紅的記號起頭，兩處是同一件事；
+             字色走 --ink（整頁最重），因為這是唯一會自己動、也唯一即時的一行。
+             警告色留給公休與撲空，不要兩件事都染紅。 */
+          const tick = '<i class="nowtick"></i>';
+          if (at) return '<div class="dnow">' + tick + '現在 ' + min2hm(n) +
+            '　應該在 <b>' + esc(at.card.data.name || '') + '</b>，還有 ' +
             durTxt(at.depart - n) + '</div>';
           const nx = sched.find(x => x.arrive > n);
-          if (nx) return '<div class="dsub" style="color:var(--accent-line)">現在 ' +
-            min2hm(n) + '　在往 <b>' + esc(nx.card.data.name || '') + '</b> 的路上，' +
+          if (nx) return '<div class="dnow">' + tick + '現在 ' + min2hm(n) +
+            '　在往 <b>' + esc(nx.card.data.name || '') + '</b> 的路上，' +
             durTxt(nx.arrive - n) + '後到</div>';
-          return '<div class="dsub">今天的行程已經結束</div>';
+          return '<div class="dnow">' + tick + '今天的行程已經結束</div>';
         })() +
         (() => {
           const shut = sched.filter(x => x.hours && x.hours.unknown === false && !x.hours.open).length;
