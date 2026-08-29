@@ -92,6 +92,8 @@
   /* 沒有 viewport-fit=cover 時 env() 一律回 0，這裡等於恆為 0。
      定義留著是為了「哪天真的要鋪滿螢幕」時改一行就回得去。 */
   --sab:0px;
+  --vtop:0px;         /* 鍵盤把版面視窗捲掉的量，JS 實測寫入 */
+  --tcol:58px;        /* 時刻欄的寬度＝那條分界線的位置 */
 }
 @media (display-mode: standalone), (display-mode: fullscreen){
   :root{ --sab:env(safe-area-inset-bottom); }
@@ -121,7 +123,7 @@ a{color:inherit}
 
 /* ── 版面骨架 ───────────────────────────────────────────── */
 #app{
-  position:fixed; left:0; right:0; top:0; height:var(--vh, 100dvh);
+  position:fixed; left:0; right:0; top:var(--vtop,0px); height:var(--vh, 100dvh);
   display:flex; flex-direction:column;
   padding:calc(env(safe-area-inset-top) + 8px) 0 0;
   background:var(--desk);
@@ -193,7 +195,7 @@ a{color:inherit}
 .leaf.ghost{opacity:.28}
 
 /* 頁的內部格線：邊欄放機器語與刻印，主欄放內容 */
-.lrow{display:grid;grid-template-columns:70px 1fr auto;align-items:stretch}
+.lrow{display:grid;grid-template-columns:var(--tcol) 1fr auto;align-items:stretch}
 /* 地圖鍵自成一欄，不能包在 data-open 裡面——包進去點一下會連地圖也展開卡片。
    命中區維持 44px 寬、整條高，拇指按得到。 */
 .lmap{display:flex;align-items:center;justify-content:center;flex:0 0 auto;
@@ -201,9 +203,11 @@ a{color:inherit}
   border-left:1px solid var(--accent-rule)}
 .lmap:active{opacity:1}
 .lmap .mark{width:17px;height:17px;stroke-width:1.9}
+/* 時刻欄收窄到剛好裝得下 09:41，內容置中——原本欄寬 70px、內容靠左，
+   右邊多出來的空白讓那條分界線看起來離時刻很遠。 */
 .lmar{
-  padding:8px 8px 8px 10px; border-right:1px solid var(--accent-rule);
-  display:flex;flex-direction:column;gap:2px;align-items:flex-start;
+  padding:8px 5px 8px 5px; border-right:1px solid var(--accent-rule);
+  display:flex;flex-direction:column;gap:2px;align-items:center;
 }
 .ltime{font-family:var(--mono);font-size:15.5px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1.1}
 .lstay{font-family:var(--mono);font-size:10.5px;opacity:.78;letter-spacing:.02em;line-height:1.35}
@@ -220,8 +224,12 @@ a{color:inherit}
   margin-bottom:5px;font-family:var(--mono);font-size:12px;line-height:1.5}
 .addrlab{font-size:10px;opacity:.62;padding-top:2px;letter-spacing:.06em}
 .addrtxt{min-width:0;word-break:break-word;text-decoration:none}
-.addrcopy{min-height:22px;padding:0 7px;font-size:10px;border-color:currentColor;
-  color:inherit;opacity:.72}
+/* 複製鍵對齊文字的第一行，不是整塊置中——地址常常兩三行，
+   置中會讓按鈕飄到兩行中間，跟哪一行都對不上。 */
+/* 選擇器要寫成 .btn.addrcopy：.btn 的 min-height:31px 定義在後面，
+   單靠 .addrcopy 權重一樣、順序落後，會被蓋掉（實測按鈕還是 31px 高）。 */
+.btn.addrcopy{align-self:start;margin-top:1px;min-height:18px;padding:0 6px;font-size:9.5px;
+  border-color:currentColor;color:inherit;opacity:.7;letter-spacing:.02em}
 .laddr{font-family:var(--mono);font-size:11px;opacity:.8;margin-top:4px;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
@@ -406,7 +414,7 @@ textarea.inp{font-family:var(--serif);font-size:15px;line-height:1.65;letter-spa
 .sync.err{color:var(--vermilion)}
 
 /* ── 抽頁（sheet）：以打孔邊為軸的兩格步進，不淡入 ────────── */
-.sheetwrap{position:fixed;left:0;right:0;top:0;height:var(--vh, 100dvh);z-index:60;display:none}
+.sheetwrap{position:fixed;left:0;right:0;top:var(--vtop,0px);height:var(--vh, 100dvh);z-index:60;display:none}
 .sheetwrap.open{display:block}
 .scrim{position:absolute;inset:0;background:rgba(0,0,0,.42)}
 .sheet{
@@ -448,10 +456,13 @@ textarea.inp{font-family:var(--serif);font-size:15px;line-height:1.65;letter-spa
 .todo.done .t{opacity:.6;text-decoration:line-through}
 
 /* 卡片展開後的內文（宋體，一個尺寸做完） */
-.detail{border-top:1px solid var(--accent-rule);padding:0 12px 12px}
-.detail .blk{display:grid;grid-template-columns:62px 1fr;gap:0;padding-top:12px}
+/* 展開後的欄位切齊上面那條分界線：標籤佔的就是時刻欄，
+   內容從分界線之後開始，整張卡只有一條垂直的視覺線。 */
+.detail{border-top:1px solid var(--accent-rule);padding:0 12px 12px 0}
+.detail .blk{display:grid;grid-template-columns:var(--tcol) 1fr;gap:0;padding-top:12px}
+.detail .blk > .lab{padding-left:5px;text-align:center}
 /* 介紹與動作不掛標籤，段落直接鋪滿 */
-.detail .blk.full{grid-template-columns:1fr}
+.detail .blk.full{grid-template-columns:1fr;padding-left:12px}
 .detail .blk > .lab{padding-right:10px;text-align:right;padding-top:4px;color:inherit;opacity:.62}
 .detail .blk > div{min-width:0}
 /* 卡片變成當日色底之後，卡上的按鈕不能再用紙色那套邊框 */
@@ -465,7 +476,7 @@ textarea.inp{font-family:var(--serif);font-size:15px;line-height:1.65;letter-spa
 .imgs img{height:96px;border:1px solid var(--rule2);border-radius:9px;background:rgba(0,0,0,.06)}
 
 /* ── 進場／旅程列表 ─────────────────────────────────────── */
-.gate{position:fixed;left:0;right:0;top:0;height:var(--vh, 100dvh);z-index:70;background:var(--paper);overflow-y:auto;display:none;
+.gate{position:fixed;left:0;right:0;top:var(--vtop,0px);height:var(--vh, 100dvh);z-index:70;background:var(--paper);overflow-y:auto;display:none;
   padding:calc(env(safe-area-inset-top) + 18px) 13px calc(var(--sab) + 20px)}
 .gate.on{display:block}
 .brand{color:var(--ink2);font-family:var(--mono);letter-spacing:.3em;
@@ -639,7 +650,7 @@ let HUES = hueSet(6);                    // openTrip() 會依實際天數重算
 /* 建置代號。手機上「改了但看起來沒變」十之八九是舊快取，
    在設定裡把這個字串印出來，一眼就知道手上這份是不是新的。
    改版時跟著 sw.js 的 CACHE 一起跳號。 */
-const BUILD = '2026-08-30 · v21';
+const BUILD = '2026-08-30 · v22';
 const VERMILION = '#D62D14';
 /* 已經過去的分頁用的極淺灰。比紙略深一點點，形狀還在但退到背景去。 */
 const PAST_TAB = '#D9D6CE';
@@ -3323,6 +3334,11 @@ function fitViewport() {
     ? Math.round(Math.max(window.innerHeight || 0, vv ? vv.height : 0))
     : Math.round(vv ? vv.height : window.innerHeight);
   if (h > 0) document.documentElement.style.setProperty('--vh', h + 'px');
+  /* 鍵盤跳出來時 iOS 會把「版面視窗」往上捲，position:fixed 是釘在版面視窗上的，
+     於是整個畫面看起來被頂掉。visualViewport.offsetTop 就是被捲掉的量，
+     把它加回 top 就抵銷了。不補這個，只要點到輸入框畫面就會彈走。 */
+  const off = vv ? Math.round(vv.offsetTop) : 0;
+  document.documentElement.style.setProperty('--vtop', (off > 0 ? off : 0) + 'px');
 }
 /* 啟動那一秒內連量幾次：獨立模式的第一次量測常常落在啟動動畫中間。 */
 function fitViewportSoon() {
