@@ -251,8 +251,12 @@ a{color:inherit}
 .striplab span:nth-child(2){opacity:.75}
 .headtop{display:flex;align-items:center;gap:7px;padding:5px 10px 5px 10px;border-bottom:1px solid var(--rule2)}
 /* 返回是導覽不是動作，不給框；左緣與下面的 DAY 方磚同一條線。 */
+/* 返回鍵用 display:flex 而不是 inline：inline 元素的高度由字面決定，
+   裡面是 SVG 就會被基線往下拉，跟旁邊的文字對不齊。 */
 .backb{border:none;background:none;padding:0;min-height:0;flex:0 0 auto;
-  font-family:var(--sans);font-size:17px;line-height:1;color:var(--ink2)}
+  display:flex;align-items:center;color:var(--ink2);
+  -webkit-appearance:none; appearance:none}
+.backb .mark{width:16px;height:16px;stroke-width:2}
 .backb:active{background:none;color:var(--ink)}
 .trip{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;
   color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
@@ -266,19 +270,22 @@ a{color:inherit}
 .ddate{font-size:15.5px;font-weight:600;letter-spacing:-.015em;line-height:1.2;font-family:var(--display)}
 .dsub{font-family:var(--mono);font-size:10.5px;color:var(--ink2);margin-top:3px;letter-spacing:.02em;line-height:1.42}
 .startrow{display:flex;align-items:center;gap:7px;margin-top:9px;flex-wrap:nowrap}
-.startrow .btn{min-height:26px;padding:3px 11px 4px;font-size:11px;flex:0 0 auto}
+.startrow .btn{min-height:28px;padding:0 11px;font-size:11px;flex:0 0 auto}
 
 /* ── 通用小零件 ─────────────────────────────────────────── */
 .lab{font-family:var(--mono);font-size:10px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink3)}
 .btn{
   display:inline-flex;align-items:center;justify-content:center;gap:6px;
-  min-height:31px;padding:5px 12px;border:1px solid var(--rule);border-radius:var(--r2);
+  min-height:31px;padding:0 12px;border:1px solid var(--rule);border-radius:var(--r2);
   font-family:var(--mono);font-size:11.5px;letter-spacing:.05em;background:transparent;
   text-decoration:none;
-  /* 行高必須是 1。中英混排時行盒的高度由第一個可用字型（Avenir Next）的
-     ascent/descent 決定，中文卻是用蘋方的字面在畫——留了半行行距，
-     兩套字面的落點就不一樣，看起來整排字都往上黏。 */
-  line-height:1;
+  /* 上下不能有內距。內距會把內容盒壓到只剩 16px，而中英混排的行盒是
+     兩套字面的聯集——蘋方的 ascent 比 Avenir Next 高，iOS 上塞不下就往上頂，
+     於是整排字看起來偏上。把上下內距歸零、高度交給 min-height，
+     內容盒有 31px，行盒才有餘裕真的被置中。
+     -webkit-appearance 也要關掉，否則 iOS 會用它自己的算法排按鈕內文。 */
+  line-height:1.15;
+  -webkit-appearance:none; appearance:none;
 }
 /* 次要鍵按下＝整塊翻黑；主要鍵按下＝框線加重，填色不變。兩種刻意不同。 */
 .btn:active{background:var(--ink);color:var(--leaf);border-color:var(--ink)}
@@ -320,7 +327,7 @@ textarea.inp{font-family:var(--serif);font-size:15px;line-height:1.65;letter-spa
   background:var(--leaf);border-top:1px solid var(--rule2);
   border-radius:0;border-top:1px solid var(--rule1);
 }
-.dock .btn{flex:0 0 auto;min-height:32px;padding:4px 12px;font-size:11.5px}
+.dock .btn{flex:0 0 auto;min-height:33px;padding:0 12px;font-size:11.5px}
 .dock .grow{flex:1 1 auto}
 .sync{font-family:var(--mono);font-size:10.5px;letter-spacing:.04em;color:var(--ink3);text-align:right;line-height:1.3}
 .sync.err{color:var(--vermilion)}
@@ -442,6 +449,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
   <symbol id="m-stay" viewBox="0 0 24 24"><path d="M3 19v-9h14a4 4 0 0 1 4 4v5"/><path d="M3 14h18"/><path d="M7 10V7h6v3"/><path d="M3 19h18"/></symbol>
   <!-- 外連箭頭。文字箭頭 U+2197 在 iOS 會被 Apple Color Emoji 接走，變成藍色方塊，
        只能自己畫；線寬與其他刻印同一套。 -->
+  <symbol id="m-back" viewBox="0 0 24 24"><path d="M20 12H5"/><path d="M11 5.5 4.5 12l6.5 6.5"/></symbol>
   <symbol id="m-ext" viewBox="0 0 24 24"><path d="M7 17 17 7"/><path d="M9.5 7H17v7.5"/></symbol>
   <symbol id="m-transit" viewBox="0 0 24 24"><path d="M4 4h16v10H4z"/><path d="M4 9.5h16"/><circle cx="8" cy="18" r="2.2"/><circle cx="16" cy="18" r="2.2"/></symbol>
   <symbol id="m-view" viewBox="0 0 24 24"><path d="M2 20h20"/><path d="M2 20 9 8l4 6 3-4 6 10"/></symbol>
@@ -515,7 +523,7 @@ const HUES = [
 /* 建置代號。手機上「改了但看起來沒變」十之八九是舊快取，
    在設定裡把這個字串印出來，一眼就知道手上這份是不是新的。
    改版時跟著 sw.js 的 CACHE 一起跳號。 */
-const BUILD = '2026-08-29 · v6';
+const BUILD = '2026-08-29 · v7';
 const VERMILION = '#D62D14';
 const MARKS = ['nature','heritage','shop','play','food','stay','transit','view','hot','pin'];
 const DEFAULT_CATS = [
@@ -1593,7 +1601,7 @@ function renderPlate() {
     const dayUrl = gmDay(list.filter(c => gq(c) || (c.data.place && c.data.place.lat != null)),
                          S.trip.defaultMode);
     h += '<div class="head"><div class="headtop">' +
-      '<button class="backb" id="btnHome" aria-label="回旅程列表">←</button>' +
+      '<button class="backb" id="btnHome" aria-label="回旅程列表">' + mark('back','sm') + '</button>' +
       '<span class="trip">' + esc(S.trip.name) + '</span></div>' +
       '<div class="headmain"><div class="headmar">' +
         '<div class="dnum">DAY</div><div class="dbig">' + (d + 1) + '</div></div>' +
@@ -1614,7 +1622,7 @@ function renderPlate() {
       '</div></div></div>';
   } else {
     h += '<div class="head"><div class="headtop">' +
-      '<button class="backb" id="btnHome" aria-label="回旅程列表">←</button>' +
+      '<button class="backb" id="btnHome" aria-label="回旅程列表">' + mark('back','sm') + '</button>' +
       '<span class="trip">' + esc(S.trip.name) + '</span></div>' +
       '<div class="headmain"><div class="headmar"><div class="dnum">POCKET</div>' +
       '<div class="dbig">' + dayCards(-1).length + '</div></div><div class="headbody">' +
@@ -2436,7 +2444,7 @@ function sheetTrip() {
     cats.map(c => '<div class="todo" data-cat="' + esc(c.id) + '">' + mark(c.mark) +
       '<span class="t">' + esc(c.name) + '</span>' +
       (DEFAULT_CATS.some(x => x.id === c.id) ? '<span class="lab">預設</span>' :
-       '<button class="btn" data-delcat="' + esc(c.id) + '" style="min-height:26px;padding:2px 8px">刪</button>') +
+       '<button class="btn" data-delcat="' + esc(c.id) + '" style="min-height:26px;padding:0 8px">刪</button>') +
       '</div>').join('') + '</div>' +
     '<div class="row" style="margin-top:9px">' +
     '<input class="inp" id="tNewCat" placeholder="新類別名稱" style="flex:1 1 120px">' +
