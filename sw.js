@@ -3,7 +3,7 @@
    背景再抓新版寫回去，所以改版後「第二次開」才會看到新的。
    注意：同一個 github.io 網域下還有別的 PWA，
    清快取時只能刪自己這支的（travel- 開頭），不能 keys() 全刪。 */
-const CACHE = 'travel-v14';
+const CACHE = 'travel-v15';
 const PRECACHE = [
   './',
   './index.html',

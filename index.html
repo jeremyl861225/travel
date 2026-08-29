@@ -282,7 +282,11 @@ a{color:inherit}
 /* 返回是導覽不是動作，不給框；左緣與下面的 DAY 方磚同一條線。 */
 /* 返回鍵用 display:flex 而不是 inline：inline 元素的高度由字面決定，
    裡面是 SVG 就會被基線往下拉，跟旁邊的文字對不齊。 */
+/* margin-left 的負值不是隨手調的：m-back 的筆畫從 viewBox 的 x=3 開始，
+   24 格縮到 16px 就是 2px 的空白。框切齊了、墨還是偏右 2px，
+   要扣掉才會跟下面 DAY 的字緣真的對在同一條線上。 */
 .backb{border:none;background:none;padding:0;min-height:0;flex:0 0 auto;
+  margin-left:-2px;
   display:flex;align-items:center;color:var(--ink2);
   -webkit-appearance:none; appearance:none}
 .backb .mark{width:16px;height:16px;stroke-width:2}
@@ -300,11 +304,11 @@ a{color:inherit}
   -webkit-text-stroke:.35px currentColor}
 .dbig{font-size:42px;font-weight:600;line-height:.86;letter-spacing:-.05em;margin-top:1px;
   font-family:var(--display);-webkit-text-stroke:.9px currentColor}
-.headbody{padding:9px 12px 11px}
+.headbody{padding:9px 12px 10px}
 .ddate{font-size:15.5px;font-weight:600;letter-spacing:-.015em;line-height:1.2;font-family:var(--display)}
 .ddate .num{font-family:var(--mono);font-size:17px;letter-spacing:-.02em}
 .dsub{font-family:var(--mono);font-size:10.5px;color:var(--ink2);margin-top:3px;letter-spacing:.02em;line-height:1.42}
-.startrow{display:flex;align-items:center;gap:7px;margin-top:9px;flex-wrap:nowrap}
+.startrow{display:flex;align-items:center;gap:7px;flex-wrap:nowrap;padding:0 12px 11px 10px}
 .startrow .btn{min-height:28px;padding:0 11px;font-size:11px;flex:0 0 auto}
 
 /* ── 通用小零件 ─────────────────────────────────────────── */
@@ -365,7 +369,9 @@ textarea.inp{font-family:var(--serif);font-size:15px;line-height:1.65;letter-spa
 .dock{
   flex:0 0 auto; z-index:20;
   height:calc(var(--dock) + var(--sab));
-  padding:0 12px var(--sab) 12px;
+  /* 右邊留出分頁鐵的寬度（＋書殼的側邊距），讓「已同步」的右緣
+     正好落在紙與分頁鐵的分界線上，跟上面的內容切齊。 */
+  padding:0 calc(var(--rail) + 5px) var(--sab) 12px;
   display:flex;align-items:center;gap:8px;
   background:transparent;border:none;
 }
@@ -1741,13 +1747,16 @@ function renderPlate() {
           (firstPin.pinDrift > 0 ? '已慢 ' + durTxt(firstPin.pinDrift) : '尚有餘裕 ' + durTxt(-firstPin.pinDrift)) +
           '</div>' : '') +
         dayStrip(sched, d) +
-        '<div class="startrow">' +
-          '<button class="btn fill" id="btnStart">出發 ' + dayStart(d) + '</button>' +
-          (S.edit ? '<button class="btn fill" id="btnPlan">排順路</button>' : '') +
-          (dayUrl ? '<a class="btn fill" href="' + dayUrl + '" target="_blank" rel="noopener">Map' +
-            mark('ext','xs') + '</a>' : '') +
-        '</div>' +
-      '</div></div></div>';
+      '</div></div>' +
+      /* 動作列是「這一天」的，不是「日期文字」的，所以拉出文字欄、
+         跟 DAY 方塊的左緣切齊，整張卡等寬。 */
+      '<div class="startrow">' +
+        '<button class="btn fill" id="btnStart">出發 ' + dayStart(d) + '</button>' +
+        (S.edit ? '<button class="btn fill" id="btnPlan">排順路</button>' : '') +
+        (dayUrl ? '<a class="btn fill" href="' + dayUrl + '" target="_blank" rel="noopener">Map' +
+          mark('ext','xs') + '</a>' : '') +
+      '</div>' +
+      '</div>';
   } else {
     h += '<div class="head"><div class="headtop">' +
       '<button class="backb" id="btnHome" aria-label="回旅程列表">' + mark('back','sm') + '</button>' +
