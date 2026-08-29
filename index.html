@@ -36,6 +36,7 @@
   /* 底色是紙，固定不變。當日色不再鋪滿整面，只出現在分頁鐵、DAY 色塊、
      類別方磚、主要按鈕與 focus 邊框——這是參考圖 hero 的作法。 */
   --paper:#FBF6EA;
+  --desk:#EFE7D3;      /* 書殼外面的桌面，比紙深一階 */
   --leaf:#FFFDF7;           /* 卡片面，比紙再亮一點點 */
   --leaf-top:#FFFFFF;       /* 下一站那一張 */
   --leaf-sunk:#F5F0E2;      /* 已經過去的 */
@@ -120,24 +121,31 @@ a{color:inherit}
 
 /* ── 版面骨架 ───────────────────────────────────────────── */
 #app{
-  /* 高度由 JS 依 visualViewport 實測寫進 --vh：iOS Safari 的 position:fixed
-     是相對「版面視窗」，那個高度含被工具列蓋住的部分；dvh 也會在工具列
-     收合的過渡期間對不上。兩者都會在頁底留一條白。 */
-  position:fixed; left:0; right:0; top:0; height:var(--vh, 100dvh); display:grid;
-  grid-template-columns:1fr var(--rail);
-  background:var(--paper);
+  position:fixed; left:0; right:0; top:0; height:var(--vh, 100dvh);
+  display:flex; flex-direction:column;
+  padding:calc(env(safe-area-inset-top) + 8px) 0 0;
+  background:var(--desk);
+}
+/* 書殼。整本活頁本是一個實體：有上下邊、有圓角、坐在比它深一階的桌面上。
+   操作列刻意留在殼外——那是手的位置，不是紙的位置。 */
+.case{
+  flex:1 1 auto; min-height:0; margin:0 5px;
+  display:grid; grid-template-columns:1fr var(--rail);
+  background:var(--paper); border-radius:11px;
+  box-shadow:0 0 0 1px var(--rule2), 0 1px 3px rgba(27,26,22,.10), 0 6px 16px rgba(27,26,22,.06);
+  overflow:hidden;
 }
 .plate{
   position:relative; overflow-y:auto; overflow-x:hidden;
   -webkit-overflow-scrolling:touch;
-  padding:calc(env(safe-area-inset-top) + 10px) 0 calc(var(--dock) + var(--sab) + 24px) var(--bind);
+  padding:10px 0 18px var(--bind);
   scroll-padding-top:80px; touch-action:pan-y;
 }
 
 /* ── 書口分頁鐵 ─────────────────────────────────────────── */
 .rail{
   position:relative; display:flex; flex-direction:column; gap:2px;
-  padding:calc(env(safe-area-inset-top) + 10px) 0 calc(var(--sab) + 8px) 0;
+  padding:10px 0 8px 0;
   background:rgba(27,26,22,.06); overflow-y:auto; scrollbar-width:none;
 }
 .rail::-webkit-scrollbar{display:none}
@@ -294,6 +302,7 @@ a{color:inherit}
   font-family:var(--display);-webkit-text-stroke:.9px currentColor}
 .headbody{padding:9px 12px 11px}
 .ddate{font-size:15.5px;font-weight:600;letter-spacing:-.015em;line-height:1.2;font-family:var(--display)}
+.ddate .num{font-family:var(--mono);font-size:17px;letter-spacing:-.02em}
 .dsub{font-family:var(--mono);font-size:10.5px;color:var(--ink2);margin-top:3px;letter-spacing:.02em;line-height:1.42}
 .startrow{display:flex;align-items:center;gap:7px;margin-top:9px;flex-wrap:nowrap}
 .startrow .btn{min-height:28px;padding:0 11px;font-size:11px;flex:0 0 auto}
@@ -351,20 +360,18 @@ textarea.inp{font-family:var(--serif);font-size:15px;line-height:1.65;letter-spa
 .leaf .hint,.leaf .lab{color:inherit;opacity:.75}
 
 /* ── 底部操作列（拇指可及） ─────────────────────────────── */
+/* 操作列在書殼外面，正常流排版。按鈕靠右——手機的左下角是圓角，
+   貼在那裡的鍵會被螢幕自己的圓角切掉。 */
 .dock{
-  /* home indicator 的高度不能當成「墊在按鈕下面的內距」——那會讓按鈕
-     黏在操作列上緣，下面留一條與上緣不對稱的空白，看起來就是頁尾破了個洞。
-     改成把 safe-area 算進整條的高度、內容垂直置中，空白就上下均分。 */
-  position:absolute;left:0;right:var(--rail);bottom:0;z-index:20;
+  flex:0 0 auto; z-index:20;
   height:calc(var(--dock) + var(--sab));
-  padding:0 12px var(--sab) var(--bind);
+  padding:0 12px var(--sab) 12px;
   display:flex;align-items:center;gap:8px;
-  background:var(--leaf);border-top:1px solid var(--rule2);
-  border-radius:0;border-top:1px solid var(--rule1);
+  background:transparent;border:none;
 }
 .dock .btn{flex:0 0 auto;min-height:33px;padding:0 12px;font-size:11.5px}
 .dock .grow{flex:1 1 auto}
-.sync{font-family:var(--mono);font-size:10.5px;letter-spacing:.04em;color:var(--ink3);text-align:right;line-height:1.3}
+.sync{font-family:var(--mono);font-size:10.5px;letter-spacing:.04em;color:var(--ink3);text-align:right;line-height:1.3;flex:0 0 auto;margin-left:4px;background:none;border:none}
 .sync.err{color:var(--vermilion)}
 
 /* ── 抽頁（sheet）：以打孔邊為軸的兩格步進，不淡入 ────────── */
@@ -505,13 +512,15 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 
 <!-- ══ 主畫面：分頁色板 ══ -->
 <div id="app" class="hide">
-  <main class="plate" id="plate"></main>
-  <nav class="rail" id="rail" aria-label="日別分頁"></nav>
+  <div class="case">
+    <main class="plate" id="plate"></main>
+    <nav class="rail" id="rail" aria-label="日別分頁"></nav>
+  </div>
   <div class="dock hide" id="dock">
+  <div class="grow"></div>
   <button class="btn" id="btnEdit" title="排序、改路程、刪卡片">編輯</button>
   <button class="btn fill" id="btnAdd">＋ 新增</button>
   <button class="btn" id="btnSet" title="旅程設定">設定</button>
-  <div class="grow"></div>
   <button class="sync" id="syncBtn" title="同步狀態"></button>
   </div>
 </div>
@@ -559,7 +568,7 @@ const HUES = [
 /* 建置代號。手機上「改了但看起來沒變」十之八九是舊快取，
    在設定裡把這個字串印出來，一眼就知道手上這份是不是新的。
    改版時跟著 sw.js 的 CACHE 一起跳號。 */
-const BUILD = '2026-08-29 · v12';
+const BUILD = '2026-08-29 · v13';
 const VERMILION = '#D62D14';
 /* 已經過去的分頁用的極淺灰。比紙略深一點點，形狀還在但退到背景去。 */
 const PAST_TAB = '#D9D6CE';
@@ -1666,7 +1675,11 @@ function renderPlate() {
       '<div class="headmain"><div class="headmar">' +
         '<div class="dnum">DAY</div><div class="dbig">' + (d + 1) + '</div></div>' +
       '<div class="headbody">' +
-        '<div class="ddate">' + dp.m + ' 月 ' + dp.d + ' 日<span style="font-size:15px;color:var(--ink2)"> 週' + WEEK[dp.w] + '</span></div>' +
+        /* 數字走 Avenir Next（跟時刻同一支），中文才走明體。
+           不分開的話日期會用壓縮體的數字，跟卡片上的時刻長得不一樣。 */
+        '<div class="ddate"><span class="num">' + dp.m + '</span> 月 <span class="num">' +
+          dp.d + '</span> 日<span style="font-size:15px;color:var(--ink2)"> 週' +
+          WEEK[dp.w] + '</span></div>' +
         (w ? '<div class="dsub">' + (WCODE[w.code] || '') + ' ' + w.tmin + '–' + w.tmax + '°C</div>' : '') +
         /* 公休與撲空要在日首就看得到。點進每一張卡才發現「今天週一休館」
            已經太晚了——那是要換天的決定，不是換時間的決定。 */
