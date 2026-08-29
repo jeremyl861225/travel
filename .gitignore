@@ -1,0 +1,4 @@
+.DS_Store
+# 設計決策用的暫時預覽頁，不進正式版（sw.js 的 precache 也不能含它）
+_palettes.html
+.impeccable/

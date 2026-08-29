@@ -1,0 +1,2022 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Travel</title>
+<meta name="theme-color" content="#0E7A78">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Travel">
+<link rel="manifest" href="./manifest.webmanifest">
+<link rel="apple-touch-icon" href="./icon-192.png">
+<link rel="icon" href="./icon-192.png">
+<style>
+/* ═══════════════════════════════════════════════════════════════
+   手冊分頁板 — 設計系統
+   板面是一整片飽和色，板上不印任何字；所有內容都落在牛奶賽璐珞頁上。
+   賽璐珞頁的顏色不是寫死的：由 solveLeaf() 在執行期把白色以某個
+   alpha 疊在當日板色上，二分搜尋到閱讀場的相對亮度落進固定亮度帶，
+   再把結果當成實色發布成 --leaf。因此每一天的頁面都帶著當天的板色，
+   而文字對比永遠一樣穩——這是戶外強光下能讀的前提。
+   ═══════════════════════════════════════════════════════════════ */
+:root{
+  /* 七色輪：一天一個色階。朱紅不在輪上，只留給勘誤條。 */
+  --hue-0:#D2571C; --hue-1:#E0A70B; --hue-2:#3F8F3A; --hue-3:#0E7A78;
+  --hue-4:#1F45A8; --hue-5:#6B3FA0; --hue-6:#8E4A24;
+  --vermilion:#D62D14;
+
+  --board:#0E7A78;          /* 當日板色，JS 換 */
+  --leaf:#EDEEEA;           /* 解出來的賽璐珞頁，JS 換 */
+  --leaf-top:#D4E2E0;       /* 最上層那一頁，比較清透，JS 換 */
+  --leaf-sunk:#E3E5E1;      /* 翻面（已過去）的頁 */
+  --ink:#15171B; --ink2:#4C525A; --ink3:#7C838C;
+  --rule:rgba(0,0,0,.20); --rule2:rgba(0,0,0,.10);
+  --board-ink:#FFFFFF;      /* 板色上的字（黑或白），JS 換 */
+
+  --sans:"Helvetica Neue",Helvetica,"PingFang TC","Heiti TC",system-ui,sans-serif;
+  --serif:"Songti TC","Hiragino Mincho ProN","Noto Serif CJK TC",Georgia,serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+
+  --r:13px; --r2:9px;       /* 圓角 */
+  --step:90ms;              /* 唯一的動作長度 */
+  --rail:44px;              /* 書口分頁鐵 */
+  --bind:26px;              /* 裝訂邊（打孔那一側） */
+  --dock:60px;
+}
+@media (prefers-reduced-motion: reduce){ :root{ --step:1ms } }
+
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{
+  font-family:var(--sans); background:var(--board); color:var(--ink);
+  font-size:16px; line-height:1.55; overscroll-behavior:none;
+  -webkit-font-smoothing:antialiased;
+}
+button,input,select,textarea{font:inherit;color:inherit;background:none;border:none}
+button{cursor:pointer}
+a{color:inherit}
+
+/* 這個世界沒有緩動曲線。所有變化都是 90ms 的兩格步進。 */
+.step{transition:transform var(--step) steps(2),opacity var(--step) steps(2)}
+
+/* ── 版面骨架 ───────────────────────────────────────────── */
+#app{
+  position:fixed; inset:0; display:grid;
+  grid-template-columns:1fr var(--rail);
+  background:var(--board);
+}
+.plate{
+  position:relative; overflow-y:auto; overflow-x:hidden;
+  -webkit-overflow-scrolling:touch;
+  padding:calc(env(safe-area-inset-top) + 10px) 0 calc(var(--dock) + env(safe-area-inset-bottom) + 24px) var(--bind);
+  scroll-padding-top:80px;
+}
+/* 書脊字：左緣那條板色不是空白，是手冊封底翻過來的書脊 */
+.spine{
+  position:fixed; left:0; width:var(--bind); z-index:3; pointer-events:none;
+  top:calc(env(safe-area-inset-top) + 14px); bottom:calc(var(--dock) + env(safe-area-inset-bottom) + 14px);
+  display:flex; align-items:flex-start; justify-content:center;
+  writing-mode:vertical-rl; text-orientation:mixed;
+  font-family:var(--mono); font-size:9.5px; letter-spacing:.24em; text-transform:uppercase;
+  color:var(--board-ink); opacity:.70; white-space:nowrap; overflow:hidden;
+}
+
+/* ── 書口分頁鐵 ─────────────────────────────────────────── */
+.rail{
+  position:relative; display:flex; flex-direction:column; gap:2px;
+  padding:calc(env(safe-area-inset-top) + 10px) 0 calc(env(safe-area-inset-bottom) + 8px) 0;
+  background:rgba(0,0,0,.16); overflow-y:auto; scrollbar-width:none;
+}
+.rail::-webkit-scrollbar{display:none}
+.tab{
+  position:relative; flex:0 0 auto; min-height:58px;
+  writing-mode:vertical-rl; text-orientation:mixed;
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:5px;
+  font-family:var(--sans); font-size:12.5px; font-weight:600; letter-spacing:.02em;
+  color:#fff; border:none; border-radius:0 11px 11px 0;
+  margin-left:3px; padding:10px 0; white-space:nowrap;
+  box-shadow:inset 1px 0 0 rgba(0,0,0,.22);
+}
+.tab .td{font-family:var(--mono);font-size:9.5px;font-weight:500;opacity:.76;letter-spacing:.03em}
+.tab.cjk{letter-spacing:.14em;font-size:12.5px}
+/* 當日分頁向左延伸，與板面接成同一塊 */
+.tab.on{margin-left:0;border-radius:0;box-shadow:none;font-weight:700;font-size:13.5px}
+.tab.on .td{opacity:.9}
+.tab.on::after{
+  content:""; position:absolute; left:-6px; top:0; bottom:0; width:8px; background:inherit;
+}
+.tab.util{min-height:72px}
+
+/* ── 賽璐珞頁 ───────────────────────────────────────────── */
+.leaf{
+  position:relative; margin:0 12px 0 0; background:var(--leaf);
+  border:1px solid var(--rule2); border-radius:var(--r); overflow:hidden;
+  box-shadow:0 1px 1px rgba(0,0,0,.08), 0 5px 14px rgba(0,0,0,.11);
+}
+.leaf + .leaf{margin-top:0}
+.leaf.top{background:var(--leaf-top)}
+.leaf.past{background:var(--leaf-sunk);color:var(--ink3)}
+.leaf.past .lname{color:var(--ink2)}
+.leaf.drag{box-shadow:0 8px 26px rgba(0,0,0,.30);position:relative;z-index:30}
+.leaf.ghost{opacity:.28}
+
+/* 頁的內部格線：邊欄放機器語與刻印，主欄放內容 */
+.lrow{display:grid;grid-template-columns:76px 1fr;align-items:stretch}
+.lmar{
+  padding:9px 8px 9px 10px; border-right:1px solid var(--rule2);
+  display:flex;flex-direction:column;gap:2px;align-items:flex-start;
+}
+.ltime{font-family:var(--mono);font-size:16.5px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1.1}
+.lstay{font-family:var(--mono);font-size:10.5px;color:var(--ink2);letter-spacing:.02em;line-height:1.35}
+.lbody{padding:9px 12px 10px 10px;min-width:0;display:flex;gap:9px;align-items:flex-start}
+.lname{font-size:16.5px;font-weight:700;letter-spacing:-.01em;line-height:1.24;word-break:break-word}
+.lmeta{display:flex;flex-wrap:wrap;gap:2px 9px;align-items:center;margin-top:3px;
+  font-family:var(--mono);font-size:10.5px;color:var(--ink2);letter-spacing:.02em}
+.lmeta .sep{color:var(--ink3)}
+.laddr{font-family:var(--mono);font-size:11px;color:var(--ink2);margin-top:4px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* 類別刻印：單一線寬的線稿，不是彩色圓點 */
+.mark{width:19px;height:19px;display:block;stroke:currentColor;fill:none;
+  stroke-width:1.6;stroke-linecap:square;stroke-linejoin:miter}
+.mark.sm{width:17px;height:17px;stroke-width:2}
+/* 參考站的實心方磚：線稿住在一塊當日板色裡，不是散落的彩色小圓點 */
+.tile{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;
+  width:26px;height:26px;border-radius:7px;background:var(--board);color:var(--board-ink);
+  margin-top:1px}
+.tile .mark{width:16px;height:16px;stroke-width:2}
+.leaf.past .tile{opacity:.62}
+
+/* 選取＝打孔：孔裡看得到板色 */
+.punch{
+  width:15px;height:15px;border-radius:50%;flex:0 0 auto;
+  border:1px solid var(--rule);background:transparent;display:inline-block;vertical-align:-2px;
+}
+.punch.on{background:var(--board);border-color:rgba(0,0,0,.32);box-shadow:inset 1px 1px 0 rgba(0,0,0,.25)}
+
+/* 勘誤條：朱紅，只有這裡用得到 */
+.errata{
+  display:flex;gap:7px;align-items:flex-start;
+  background:var(--vermilion);color:#fff;padding:6px 10px 7px;
+  font-family:var(--mono);font-size:11px;letter-spacing:.02em;line-height:1.5;
+  border-top:1px solid rgba(0,0,0,.25);
+}
+.errata b{font-weight:700}
+.warn{background:#B8801A}
+
+/* ── 鉸鏈與區間欄（兩頁之間的路程） ───────────────────────── */
+.hinge{
+  position:relative;margin:0 12px 0 0;height:31px;display:flex;align-items:center;gap:8px;
+  padding-left:10px;
+}
+.leg{
+  display:inline-flex;align-items:center;gap:6px;background:var(--leaf);
+  border:1px solid var(--rule2);padding:4px 12px 5px;border-radius:999px;
+  font-family:var(--mono);font-size:11px;letter-spacing:.03em;color:var(--ink);
+  text-decoration:none;box-shadow:0 1px 3px rgba(0,0,0,.10);
+}
+.leg.miss{color:var(--ink3)}
+.leg b{font-weight:700;font-size:11.5px}
+.legdir{
+  background:var(--leaf);border:1px solid var(--rule2);color:var(--ink2);
+  padding:4px 12px 5px;border-radius:999px;text-decoration:none;
+  font-family:var(--mono);font-size:10.5px;letter-spacing:.05em;
+  box-shadow:0 1px 3px rgba(0,0,0,.10);
+}
+
+/* ── 頁首那一頁（板上不印字，所以標題也住在頁上） ─────────── */
+.head{margin:0 12px 10px 0;background:var(--leaf);border:1px solid var(--rule2);
+  border-radius:var(--r);overflow:hidden;
+  box-shadow:0 1px 1px rgba(0,0,0,.08), 0 5px 14px rgba(0,0,0,.11)}
+/* 參考站那條迷你長條圖：一根柱子是一站，高度是停留時間 */
+.daybars{display:flex;gap:4px;align-items:flex-end;height:20px;margin-top:9px;justify-content:flex-start}
+.daybars i{flex:0 1 18px;display:block;background:var(--board);border-radius:2px;min-height:4px;opacity:.88}
+.daybars i.now{opacity:1;box-shadow:0 0 0 2px var(--leaf), 0 0 0 3px var(--board)}
+.headtop{display:flex;align-items:center;gap:8px;padding:5px 10px 5px 10px;border-bottom:1px solid var(--rule2)}
+.trip{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;
+  color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
+.headmain{display:grid;grid-template-columns:76px 1fr;align-items:stretch}
+.headmar{padding:10px 8px 10px 10px;border-right:1px solid var(--rule2)}
+.dnum{font-family:var(--mono);font-size:11px;letter-spacing:.1em;color:var(--ink2)}
+.dbig{font-size:30px;font-weight:700;line-height:.9;letter-spacing:-.04em;margin-top:3px}
+.headbody{padding:10px 12px 11px}
+.ddate{font-size:16.5px;font-weight:700;letter-spacing:-.01em}
+.dsub{font-family:var(--mono);font-size:11px;color:var(--ink2);margin-top:3px;letter-spacing:.02em;line-height:1.5}
+.startrow{display:flex;align-items:center;gap:7px;margin-top:10px;flex-wrap:wrap}
+.startrow .btn{min-height:31px;padding:5px 10px;font-size:11.5px}
+
+/* ── 通用小零件 ─────────────────────────────────────────── */
+.lab{font-family:var(--mono);font-size:10.5px;letter-spacing:.13em;text-transform:uppercase;color:var(--ink3)}
+.btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  min-height:34px;padding:6px 13px;border:1px solid var(--rule);border-radius:var(--r2);
+  font-family:var(--mono);font-size:11.5px;letter-spacing:.05em;background:transparent;
+  text-decoration:none;
+}
+.btn:active{transform:translate(1px,1px)}
+/* 主要動作用當日板色，跟參考站的實心黃鍵同一手 */
+.btn.fill{background:var(--board);color:var(--board-ink);border-color:rgba(0,0,0,.18);font-weight:700}
+.btn.wide{width:100%}
+.btn[disabled]{opacity:.4}
+.inp{
+  width:100%;background:transparent;border:1px solid var(--rule);border-radius:var(--r2);
+  padding:10px 12px;font-family:var(--mono);font-size:14.5px;letter-spacing:.02em;
+}
+.inp:focus{outline:2px solid var(--board);outline-offset:-1px}
+textarea.inp{font-family:var(--serif);font-size:15px;line-height:24px;letter-spacing:0;min-height:120px;resize:vertical}
+.hint{font-family:var(--mono);font-size:11px;color:var(--ink3);line-height:1.5;margin-top:5px}
+
+/* ── 底部操作列（拇指可及） ─────────────────────────────── */
+.dock{
+  position:fixed;left:0;right:var(--rail);bottom:0;z-index:20;
+  height:calc(var(--dock) + env(safe-area-inset-bottom));
+  padding:0 12px env(safe-area-inset-bottom) var(--bind);
+  display:flex;align-items:center;gap:8px;
+  background:var(--leaf);border-top:1px solid var(--rule2);
+  border-radius:16px 16px 0 0;box-shadow:0 -3px 14px rgba(0,0,0,.16);
+}
+.dock .btn{flex:0 0 auto;min-height:42px}
+.dock .grow{flex:1 1 auto}
+.sync{font-family:var(--mono);font-size:10.5px;letter-spacing:.04em;color:var(--ink3);text-align:right;line-height:1.3}
+.sync.err{color:var(--vermilion)}
+
+/* ── 抽頁（sheet）：以打孔邊為軸的兩格步進，不淡入 ────────── */
+.sheetwrap{position:fixed;inset:0;z-index:60;display:none}
+.sheetwrap.open{display:block}
+.scrim{position:absolute;inset:0;background:rgba(0,0,0,.42)}
+.sheet{
+  position:absolute;left:0;right:0;bottom:0;max-height:92dvh;overflow-y:auto;
+  background:var(--leaf);border-top:1px solid var(--rule2);
+  border-radius:20px 20px 0 0;
+  padding:0 0 calc(env(safe-area-inset-bottom) + 16px);
+  transform:translateY(100%);transition:transform var(--step) steps(2);
+}
+.sheetwrap.open .sheet{transform:translateY(0)}
+.sheethead{
+  position:sticky;top:0;z-index:2;background:var(--leaf);border-radius:20px 20px 0 0;
+  display:flex;align-items:center;gap:10px;padding:13px 15px 11px;
+  border-bottom:1px solid var(--rule);
+}
+.sheethead h2{font-size:18px;font-weight:700;letter-spacing:-.01em;flex:1;min-width:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.sheetbody{padding:14px}
+/* 手冊的四欄格線在窄螢幕收成一欄，標籤吊在邊欄 */
+.fld{display:grid;grid-template-columns:76px 1fr;gap:10px;align-items:start;margin-bottom:13px}
+.fld > .lab{padding-top:10px;text-align:right}
+.fld.stack{grid-template-columns:1fr}
+.fld.stack > .lab{text-align:left;padding-top:0;margin-bottom:5px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.prose{font-family:var(--serif);font-size:15px;line-height:24px}
+
+/* 類別選擇：刻印＋文字，不靠顏色分辨 */
+.cats{display:flex;flex-wrap:wrap;gap:6px}
+.cat{display:inline-flex;align-items:center;gap:5px;border:1px solid var(--rule);
+  padding:6px 12px;border-radius:999px;font-size:12.5px;letter-spacing:.01em}
+.cat.on{background:var(--board);color:var(--board-ink);border-color:rgba(0,0,0,.2);font-weight:700}
+
+/* 待辦（預定）：勾選就是打一個孔 */
+.todo{display:flex;align-items:flex-start;gap:9px;padding:7px 0;border-bottom:1px solid var(--rule2)}
+.todo .t{flex:1;font-size:15px;line-height:1.45}
+.todo.done .t{color:var(--ink3);text-decoration:line-through}
+
+/* 卡片展開後的內文（宋體，一個尺寸做完） */
+.detail{border-top:1px solid var(--rule2);padding:0 12px 12px}
+.detail .blk{display:grid;grid-template-columns:76px 1fr;gap:0;padding-top:12px}
+.detail .blk > .lab{padding-right:10px;text-align:right;padding-top:4px}
+.detail .blk > div{min-width:0}
+.hours{font-family:var(--mono);font-size:11.5px;line-height:1.75;color:var(--ink2)}
+.hours .today{color:var(--ink);font-weight:700}
+.linkline{display:block;font-family:var(--mono);font-size:12px;padding:3px 0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.imgs{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px}
+.imgs img{height:96px;border:1px solid var(--rule2);border-radius:9px;background:rgba(0,0,0,.06)}
+
+/* ── 上路模式：一頁一站，字大到街上瞄一眼就夠 ──────────── */
+.road{position:fixed;inset:0;z-index:50;background:var(--board);display:none;
+  grid-template-rows:auto auto 1fr;
+  padding:calc(env(safe-area-inset-top) + 10px) 12px calc(env(safe-area-inset-bottom) + 12px)}
+.road.on{display:grid}
+.roadhead{display:flex;align-items:center;gap:10px;color:var(--board-ink);
+  font-family:var(--mono);font-size:11.5px;letter-spacing:.1em;text-transform:uppercase}
+.roadcard{background:var(--leaf);border:1px solid var(--rule2);border-radius:17px;
+  box-shadow:0 2px 4px rgba(0,0,0,.10), 0 10px 24px rgba(0,0,0,.16);
+  margin:10px 0;padding:19px 18px 20px;display:flex;flex-direction:column;min-height:0}
+.roadeta{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.roadeta .big{font-family:var(--mono);font-size:48px;font-weight:700;line-height:.9;
+  letter-spacing:-.045em;font-variant-numeric:tabular-nums}
+.roadname{font-size:27px;font-weight:700;line-height:1.16;letter-spacing:-.02em;margin-top:12px}
+.roadsub{font-family:var(--mono);font-size:12.5px;color:var(--ink2);margin-top:8px;line-height:1.6}
+.roadnext{margin-top:auto;padding-top:12px;border-top:1px solid var(--rule2);
+  font-family:var(--mono);font-size:12px;color:var(--ink2)}
+/* 大字下面那塊空白拿來放今天剩下的站，街上一眼掃完 */
+.roadrest{flex:1 1 auto;min-height:0;overflow-y:auto;margin-top:14px;
+  border-top:1px solid var(--rule2);padding-top:8px}
+.restrow{display:flex;gap:10px;align-items:baseline;padding:7px 0;
+  border-bottom:1px solid var(--rule2);text-decoration:none}
+.restrow:last-child{border-bottom:none}
+.restrow .t{font-family:var(--mono);font-size:13px;font-weight:600;
+  font-variant-numeric:tabular-nums;flex:0 0 auto}
+.restrow .n{flex:1;min-width:0;font-size:14.5px;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+.restrow .g{font-family:var(--mono);font-size:10.5px;color:var(--ink3);flex:0 0 auto}
+.restrow.late .t{color:var(--vermilion)}
+.roadstrip{display:flex;gap:3px;align-items:flex-end;height:26px;align-self:end}
+.roadstrip i{flex:1;background:rgba(255,255,255,.34);height:10px;display:block;border-radius:3px}
+.roadstrip i.on{background:#fff;height:22px}
+.roadstrip i.past{background:rgba(255,255,255,.16)}
+
+/* ── 進場／旅程列表 ─────────────────────────────────────── */
+.gate{position:fixed;inset:0;z-index:70;background:var(--board);overflow-y:auto;display:none;
+  padding:calc(env(safe-area-inset-top) + 22px) 16px calc(env(safe-area-inset-bottom) + 22px)}
+.gate.on{display:block}
+.brand{color:var(--board-ink);font-family:var(--mono);letter-spacing:.34em;
+  text-transform:uppercase;font-size:12px}
+.brandbig{color:var(--board-ink);font-size:39px;font-weight:700;letter-spacing:-.035em;
+  line-height:1;margin:6px 0 22px}
+.panel{background:var(--leaf);border:1px solid var(--rule2);border-radius:var(--r);
+  box-shadow:0 1px 1px rgba(0,0,0,.08), 0 5px 14px rgba(0,0,0,.12);
+  padding:16px;margin-bottom:12px}
+.panel h3{font-size:16px;font-weight:700;margin-bottom:9px;letter-spacing:-.01em}
+.triprow{display:flex;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid var(--rule2);width:100%;text-align:left}
+.triprow:last-child{border-bottom:none}
+.tripswatch{width:26px;height:34px;flex:0 0 auto;border:1px solid rgba(0,0,0,.22);border-radius:6px}
+.tripname{flex:1;min-width:0}
+.tripname b{display:block;font-size:16px;font-weight:700;letter-spacing:-.01em;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tripname span{font-family:var(--mono);font-size:11px;color:var(--ink2);letter-spacing:.04em}
+
+.toast{position:fixed;left:50%;bottom:calc(var(--dock) + env(safe-area-inset-bottom) + 14px);
+  transform:translateX(-50%);z-index:90;background:var(--ink);color:var(--leaf);
+  font-family:var(--mono);font-size:12.5px;letter-spacing:.03em;padding:10px 16px;
+  border:1px solid var(--ink);border-radius:999px;max-width:88vw;text-align:center;display:none}
+.toast.on{display:block}
+.hide{display:none!important}
+</style>
+</head>
+<body>
+<!--
+DIRECTION CONTRACT · seed 20291719
+THESIS: 一天不是一疊卡片，是一片飽和色的分頁色板，行程頁懸在它上方一毫米。
+  拒絕這個類別的預設排法：白底圓角卡片流、彩色小圓點、底部四格 tab bar。
+OWN-WORLD: 盒裝軟體參考手冊。分頁色板為七色輪（oxide orange／chrome yellow／grass／
+  teal／ultramarine／violet／sienna）全飽和，板面不印任何字；內容全部落在牛奶賽璐珞
+  頁上，頁色由執行期二分搜尋 sRGB source-over 合成解出，使閱讀場永遠落在固定亮度帶。
+  朱紅只留給勘誤條。重字級無襯線標題、宋體內文一個尺寸做完、等寬體是機器語。
+  硬邊、打孔、一道不模糊的硬影、零緩動。
+STORY: 使用者一眼知道今天是哪一片色板、下一站幾點到、還差幾分鐘；拖一下順序，整天
+  的時刻立刻重算；貼一個 Google 地圖網址，卡片自己長出地址與營業時間。
+FIRST VIEWPORT: 右緣一條階梯式分頁鐵，一天一個色階，高度依當天行程長度；當日分頁向
+  左延伸成為整片色板。板上浮著賽璐珞頁堆：左邊欄是等寬的到達時刻與停留，主欄是站名
+  與類別刻印；頁與頁之間是打孔鉸鏈與區間欄（路程分鐘）。下一站那一頁最清透、頭上打
+  了一個孔。主要動作固定在拇指可及的底緣。
+FORM: 手冊分頁板（catalog: rw-manual-acetate-tab-board），方向輪中的挑戰者，由使用者
+  選定；seed key 20291719。
+FINISH: unreviewed and undocumented is unfinished; this build ends with the finish review, the verdict, DESIGN.md, and every shipping raster carrying its provenance
+-->
+
+<svg style="display:none" aria-hidden="true">
+  <!-- 類別刻印：手冊的線稿語彙，單一線寬、方角收筆 -->
+  <symbol id="m-nature" viewBox="0 0 24 24"><path d="M12 21V9"/><path d="M12 12 4 8l8-5 8 5-8 4Z"/><path d="M6 14l6 3 6-3"/></symbol>
+  <symbol id="m-heritage" viewBox="0 0 24 24"><path d="M3 8h18"/><path d="M5 8v13M19 8v13M9 8v13M15 8v13"/><path d="M2 5h20l-2 3H4L2 5Z"/></symbol>
+  <symbol id="m-shop" viewBox="0 0 24 24"><path d="M4 8h16l-1.4 13H5.4L4 8Z"/><path d="M9 8V5a3 3 0 0 1 6 0v3"/></symbol>
+  <symbol id="m-play" viewBox="0 0 24 24"><path d="M3 6h18v12H3z"/><path d="M3 11h18"/><path d="M12 6v5"/><path d="M9 15h6"/></symbol>
+  <symbol id="m-food" viewBox="0 0 24 24"><path d="M6 3v8a2 2 0 0 0 4 0V3"/><path d="M8 11v10"/><path d="M17 3c-2 2-2 5-2 7h4c0-2 0-5-2-7Z"/><path d="M17 10v11"/></symbol>
+  <symbol id="m-stay" viewBox="0 0 24 24"><path d="M3 19v-9h14a4 4 0 0 1 4 4v5"/><path d="M3 14h18"/><path d="M7 10V7h6v3"/><path d="M3 19h18"/></symbol>
+  <symbol id="m-transit" viewBox="0 0 24 24"><path d="M4 4h16v10H4z"/><path d="M4 9.5h16"/><circle cx="8" cy="18" r="2.2"/><circle cx="16" cy="18" r="2.2"/></symbol>
+  <symbol id="m-view" viewBox="0 0 24 24"><path d="M2 20h20"/><path d="M2 20 9 8l4 6 3-4 6 10"/></symbol>
+  <symbol id="m-hot" viewBox="0 0 24 24"><path d="M4 14h16v7H4z"/><path d="M7 11c0-2 2-2 2-4M12 11c0-2 2-2 2-4M17 11c0-2 2-2 2-4"/></symbol>
+  <symbol id="m-pin" viewBox="0 0 24 24"><path d="M12 22s7-7.6 7-13a7 7 0 1 0-14 0c0 5.4 7 13 7 13Z"/><circle cx="12" cy="9" r="2.6"/></symbol>
+  <symbol id="m-drive" viewBox="0 0 24 24"><path d="M3 16v-4l2-5h14l2 5v4"/><path d="M3 16h18v3h-3v-3M6 19H3v-3"/><circle cx="7" cy="16" r="1.4"/><circle cx="17" cy="16" r="1.4"/></symbol>
+  <symbol id="m-walk" viewBox="0 0 24 24"><circle cx="13" cy="4" r="2"/><path d="M13 7l-3 5 3 3 1 6"/><path d="M10 12 6 15"/><path d="M13 15l-3 6"/><path d="M14 9l4 2"/></symbol>
+  <symbol id="m-bike" viewBox="0 0 24 24"><circle cx="5.5" cy="17" r="3.5"/><circle cx="18.5" cy="17" r="3.5"/><path d="M5.5 17 10 8h5l3.5 9"/><path d="M9 8h5"/></symbol>
+</svg>
+
+<!-- ══ 進場：旅程列表 ══ -->
+<section class="gate on" id="gate">
+  <div class="brand">Reference Manual</div>
+  <div class="brandbig">Travel</div>
+  <div id="gateBody"></div>
+</section>
+
+<!-- ══ 主畫面：分頁色板 ══ -->
+<div id="app" class="hide">
+  <main class="plate" id="plate"></main>
+  <div class="spine" id="spine" aria-hidden="true"></div>
+  <nav class="rail" id="rail" aria-label="日別分頁"></nav>
+</div>
+
+<div class="dock hide" id="dock">
+  <button class="btn" id="btnRoad" title="街上單手用：放大顯示下一站、幾點到、一鍵導航">下一站</button>
+  <button class="btn fill" id="btnAdd">＋ 新增</button>
+  <div class="grow"></div>
+  <button class="sync" id="syncBtn" title="同步狀態"></button>
+</div>
+
+<!-- ══ 上路模式 ══ -->
+<section class="road" id="road">
+  <div class="roadhead">
+    <button class="btn" id="roadClose" style="border-color:currentColor;color:inherit">← 完整行程</button>
+    <span id="roadDay" style="flex:1;text-align:right"></span>
+  </div>
+  <div class="roadcard" id="roadCard"></div>
+  <div class="roadstrip" id="roadStrip"></div>
+</section>
+
+<!-- ══ 抽頁 ══ -->
+<div class="sheetwrap" id="sheetWrap">
+  <div class="scrim" id="sheetScrim"></div>
+  <div class="sheet" id="sheet" role="dialog" aria-modal="true">
+    <div class="sheethead"><h2 id="sheetTitle"></h2>
+      <button class="btn" id="sheetClose">關閉</button></div>
+    <div class="sheetbody" id="sheetBody"></div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+/* ═══════════════════════════════════════════════════════════════
+   Travel — 行程編排 PWA
+   資料在本機為主（IndexedDB），連得上線才同步到 Supabase；
+   上傳前每張卡片各自用 AES-GCM 加密，金鑰由旅程密碼 PBKDF2 導出。
+   ═══════════════════════════════════════════════════════════════ */
+
+const CFG = {
+  url: 'https://dawcpdgonxmhojwonkut.supabase.co',
+  key: 'sb_publishable_pjoI0uuRcCn16-GMC_g0xw_9nqoJU-V',
+  iters: 250000,
+};
+const HUES = ['#D2571C','#E0A70B','#3F8F3A','#0E7A78','#1F45A8','#6B3FA0','#8E4A24'];
+const VERMILION = '#D62D14';
+const MARKS = ['nature','heritage','shop','play','food','stay','transit','view','hot','pin'];
+const DEFAULT_CATS = [
+  { id:'nature',   name:'自然', mark:'nature' },
+  { id:'heritage', name:'古蹟', mark:'heritage' },
+  { id:'shop',     name:'購物', mark:'shop' },
+  { id:'play',     name:'互動', mark:'play' },
+  { id:'food',     name:'飲食', mark:'food' },
+  { id:'stay',     name:'住宿', mark:'stay' },
+];
+const MODES = [
+  { id:'drive',   name:'開車', mark:'drive' },
+  { id:'transit', name:'大眾運輸', mark:'transit' },
+  { id:'walk',    name:'步行', mark:'walk' },
+  { id:'bicycle', name:'單車', mark:'bike' },
+];
+const WEEK = ['日','一','二','三','四','五','六'];
+
+/* ── 小工具 ─────────────────────────────────────────────── */
+const $  = (s, r) => (r || document).querySelector(s);
+const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
+const el = (tag, cls, txt) => { const n = document.createElement(tag);
+  if (cls) n.className = cls; if (txt != null) n.textContent = txt; return n; };
+const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g,
+  c => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+const uuid = () => (crypto.randomUUID ? crypto.randomUUID()
+  : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+      const r = crypto.getRandomValues(new Uint8Array(1))[0] % 16;
+      return (c === 'x' ? r : (r & 3 | 8)).toString(16); }));
+const pad2 = n => String(n).padStart(2, '0');
+const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+
+function toast(msg, ms) {
+  const t = $('#toast'); t.textContent = msg; t.classList.add('on');
+  clearTimeout(toast._t); toast._t = setTimeout(() => t.classList.remove('on'), ms || 2200);
+}
+function mark(id, cls) {
+  return '<svg class="mark ' + (cls || '') + '" aria-hidden="true"><use href="#m-' + id + '"/></svg>';
+}
+
+/* 分鐘 ↔ HH:MM。跨夜就往上加 24 小時，不做時區換算：
+   行程時間一律當作「當地時間的字面值」，這是旅遊最不容易出錯的做法。 */
+const hm2min = s => { const m = /^(\d{1,2}):(\d{2})$/.exec(String(s || '').trim());
+  return m ? (+m[1]) * 60 + (+m[2]) : null; };
+const min2hm = v => { if (v == null || !isFinite(v)) return '--:--';
+  let x = Math.round(v); const d = Math.floor(x / 1440); x -= d * 1440;
+  if (x < 0) x += 1440; return pad2(Math.floor(x / 60)) + ':' + pad2(x % 60); };
+/* 時刻欄很窄，這裡只用分鐘；跟編輯畫面填的單位也一致。 */
+const durMin = m => (m == null || !isFinite(m)) ? '—' : Math.round(m) + '分';
+const durTxt = m => { if (m == null || !isFinite(m)) return '—';
+  m = Math.round(m); const h = Math.floor(m / 60), r = m % 60;
+  return h ? (r ? h + '時' + r + '分' : h + '時') : m + '分'; };
+const dist = m => m == null ? '' : (m >= 1000 ? (m / 1000).toFixed(m >= 10000 ? 0 : 1) + ' km' : m + ' m');
+
+function dateAdd(iso, n) {
+  const d = new Date(iso + 'T12:00:00');
+  d.setDate(d.getDate() + n);
+  return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+}
+function dateParts(iso) {
+  const d = new Date(iso + 'T12:00:00');
+  return { m: d.getMonth() + 1, d: d.getDate(), w: d.getDay(), y: d.getFullYear() };
+}
+function todayISO() {
+  const d = new Date();
+  return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+}
+
+/* 分數索引：兩個鍵之間永遠插得進新的一個，拖曳排序不必重寫整天。 */
+const A62 = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz';
+function keyBetween(a, b) {
+  a = a || ''; b = b || '';
+  let i = 0, out = '';
+  for (;; i++) {
+    const ca = i < a.length ? A62.indexOf(a[i]) : -1;
+    const cb = i < b.length ? A62.indexOf(b[i]) : A62.length;
+    if (cb - ca > 1) { out += A62[Math.floor((ca + cb) / 2)]; return out; }
+    out += i < a.length ? a[i] : A62[0];
+  }
+}
+function keyAfter(a) { return keyBetween(a, ''); }
+
+/* ── 板色與賽璐珞頁：執行期解出頁的顏色 ──────────────────── */
+function hex2rgb(h) { const s = h.replace('#',''); return [0,2,4].map(i => parseInt(s.substr(i,2),16)); }
+function rgb2hex(c) { return '#' + c.map(v => pad2(clamp(Math.round(v),0,255).toString(16))).join(''); }
+function lin(c) { c /= 255; return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4); }
+function relLum(c) { return 0.2126 * lin(c[0]) + 0.7152 * lin(c[1]) + 0.0722 * lin(c[2]); }
+function over(fg, bg, a) { return fg.map((c, i) => c * a + bg[i] * (1 - a)); }
+function contrast(a, b) { const l1 = relLum(a), l2 = relLum(b);
+  return (Math.max(l1,l2) + 0.05) / (Math.min(l1,l2) + 0.05); }
+
+/* 二分搜尋出一個 alpha，讓「頁色疊在板色上」的結果落進指定亮度帶。
+   板色越深、頁就要越不透明；板色越亮、頁反而更清透。
+   結果直接當實色用（它就是合成結果），比真的疊半透明穩定也便宜。 */
+function solveLeaf(boardHex, targetL, sheetHex) {
+  const bg = hex2rgb(boardHex), fg = hex2rgb(sheetHex);
+  const up = relLum(fg) > relLum(bg);
+  let lo = 0, hi = 1;
+  for (let i = 0; i < 26; i++) {
+    const mid = (lo + hi) / 2;
+    const L = relLum(over(fg, bg, mid));
+    if ((L < targetL) === up) lo = mid; else hi = mid;
+  }
+  return rgb2hex(over(fg, bg, (lo + hi) / 2));
+}
+function inkOn(boardHex) {
+  const bg = hex2rgb(boardHex);
+  return contrast(bg, [255,255,255]) >= contrast(bg, [10,10,10]) ? '#FFFFFF' : '#101010';
+}
+function applyBoard(hue) {
+  /* 只有一種光線：戶外。板色全飽和，頁是牛奶賽璐珞——不是純白，帶一點暖，
+     疊在板色上才像紙不像螢幕。閱讀場固定落在 0.815 的亮度帶，
+     與墨黑的對比在 15:1 以上，太陽底下也讀得到。沒有暗色主題。 */
+  const board = hue;
+  const sheet = '#FFFCF3';
+  const leaf     = solveLeaf(board, 0.815, sheet);
+  const leafTop  = solveLeaf(board, 0.645, sheet);
+  const leafSunk = solveLeaf(board, 0.745, sheet);
+  const r = document.documentElement.style;
+  r.setProperty('--board', board);
+  r.setProperty('--leaf', leaf);
+  r.setProperty('--leaf-top', leafTop);
+  r.setProperty('--leaf-sunk', leafSunk);
+  r.setProperty('--board-ink', inkOn(board));
+  const tc = $('meta[name=theme-color]'); if (tc) tc.setAttribute('content', board);
+}
+const hueOf = i => HUES[((i % HUES.length) + HUES.length) % HUES.length];
+</script>
+
+<script>
+'use strict';
+/* ═══ 加密 ═══════════════════════════════════════════════════
+   金鑰由旅程密碼 PBKDF2 導出，只活在記憶體裡（除非使用者選「記住這台裝置」）。
+   密碼遺失＝資料救不回來：伺服器上只有密文，我們沒有備份。 */
+const te = new TextEncoder(), td = new TextDecoder();
+const b64 = buf => btoa(String.fromCharCode.apply(null, new Uint8Array(buf)));
+const unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+
+async function deriveKey(pass, saltB64, iters) {
+  const base = await crypto.subtle.importKey('raw', te.encode(pass), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey(
+    { name:'PBKDF2', salt: unb64(saltB64), iterations: iters || CFG.iters, hash:'SHA-256' },
+    base, { name:'AES-GCM', length:256 }, true, ['encrypt','decrypt']);
+}
+/* 寫入權限用的雜湊。它可以被重放，所以 travel.trips 這張表絕不對 client 開放，
+   只有 SECURITY DEFINER 的函式讀得到它。 */
+async function authHash(code, pass, saltB64) {
+  const raw = te.encode(String(code).toUpperCase() + ':' + pass + ':' + saltB64);
+  return b64(await crypto.subtle.digest('SHA-256', raw));
+}
+async function encJSON(obj, key) {
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const ct = await crypto.subtle.encrypt({ name:'AES-GCM', iv }, key, te.encode(JSON.stringify(obj)));
+  const out = new Uint8Array(12 + ct.byteLength);
+  out.set(iv, 0); out.set(new Uint8Array(ct), 12);
+  return b64(out);
+}
+async function decJSON(s, key) {
+  const raw = unb64(s);
+  const pt = await crypto.subtle.decrypt({ name:'AES-GCM', iv: raw.slice(0,12) }, key, raw.slice(12));
+  return JSON.parse(td.decode(pt));
+}
+function newCode() {
+  /* 去掉 0/O/1/I 這些看起來一樣的字元——這串要用嘴巴唸給旅伴聽。 */
+  const A = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  return Array.from(crypto.getRandomValues(new Uint8Array(8)))
+    .map(v => A[v % A.length]).join('');
+}
+
+/* ═══ 本機資料庫 ═══════════════════════════════════════════ */
+let DB = null;
+function openDB() {
+  return new Promise((res, rej) => {
+    const rq = indexedDB.open('travel-db', 1);
+    rq.onupgradeneeded = e => {
+      const db = e.target.result;
+      if (!db.objectStoreNames.contains('trips')) db.createObjectStore('trips', { keyPath:'code' });
+      if (!db.objectStoreNames.contains('cards')) {
+        const s = db.createObjectStore('cards', { keyPath:'id' });
+        s.createIndex('trip', 'trip', { unique:false });
+      }
+      if (!db.objectStoreNames.contains('kv')) db.createObjectStore('kv', { keyPath:'k' });
+    };
+    rq.onsuccess = e => { DB = e.target.result; res(DB); };
+    rq.onerror = () => rej(rq.error);
+  });
+}
+function tx(store, mode) { return DB.transaction(store, mode || 'readonly').objectStore(store); }
+function req(r) { return new Promise((res, rej) => { r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error); }); }
+const dbGet    = (s, k)  => req(tx(s).get(k));
+const dbAll    = (s)     => req(tx(s).getAll());
+const dbPut    = (s, v)  => req(tx(s, 'readwrite').put(v));
+const dbDel    = (s, k)  => req(tx(s, 'readwrite').delete(k));
+const dbByTrip = (code)  => req(tx('cards').index('trip').getAll(code));
+async function kvGet(k, d) { const r = await dbGet('kv', k); return r ? r.v : d; }
+const kvSet = (k, v) => dbPut('kv', { k, v });
+
+/* ═══ 執行期狀態 ═══════════════════════════════════════════ */
+const S = {
+  trip: null,        // 目前旅程（已解密的設定）
+  key: null,         // AES 金鑰
+  auth: '',          // auth_hash
+  cards: [],         // 這趟的所有卡（本機、已解密）
+  day: 0,            // 目前分頁；-1 = 候選口袋
+  open: null,        // 展開中的卡 id
+  sched: [],         // 推算結果
+  syncing: false,
+  syncErr: '',
+  online: navigator.onLine,
+  weather: {},       // dayIndex -> {tmin,tmax,code}
+};
+
+const catsOf = () => (S.trip && S.trip.cats && S.trip.cats.length) ? S.trip.cats : DEFAULT_CATS;
+const catBy  = id => catsOf().find(c => c.id === id) || null;
+const modeBy = id => MODES.find(m => m.id === id) || MODES[0];
+
+function dayCards(d) {
+  return S.cards.filter(c => !c.deleted && c.dayIndex === d)
+                .sort((a, b) => a.orderKey < b.orderKey ? -1 : a.orderKey > b.orderKey ? 1 : 0);
+}
+function dayDate(i) { return S.trip ? dateAdd(S.trip.startDate, i) : todayISO(); }
+function dayStart(i) {
+  const v = S.trip && S.trip.dayStarts ? S.trip.dayStarts[i] : null;
+  return v || (S.trip && S.trip.defaultStart) || '08:30';
+}
+function todayIndex() {
+  if (!S.trip) return 0;
+  const t = todayISO();
+  for (let i = 0; i < S.trip.days; i++) if (dayDate(i) === t) return i;
+  return -2;   // 不在行程期間內
+}
+</script>
+
+<script>
+'use strict';
+/* ═══ 時刻推算 ═══════════════════════════════════════════════
+   使用者只給「停留多久」與順序，其餘由這裡負責。
+   釘選的卡片是固定點：到得早就等，到得晚就把落後量一路帶下去。 */
+function computeSchedule(d) {
+  const list = dayCards(d);
+  let t = hm2min(dayStart(d));
+  if (t == null) t = 8 * 60 + 30;
+  const out = list.map(c => {
+    const pin = hm2min(c.data.pinTime);
+    let arrive = t, wait = 0, late = 0;
+    if (pin != null) {
+      if (pin >= t) { arrive = pin; wait = pin - t; }
+      else { arrive = t; late = t - pin; }
+    }
+    const stay = Number(c.data.stayMin) || 0;
+    const depart = arrive + stay;
+    const legMin = c.data.leg && c.data.leg.min != null ? Number(c.data.leg.min) : null;
+    t = depart + (legMin == null ? 0 : legMin);
+    return { card:c, arrive, depart, wait, late, pin, legMin, legKnown: legMin != null };
+  });
+
+  /* 往回走一次，把「距離下一個釘選點還差幾分」掛回每一段。
+     這是儀表盤那套紀律：先看得到偏移量，才輪到紅色警告。 */
+  let nextPinIdx = -1;
+  for (let i = out.length - 1; i >= 0; i--) {
+    out[i].nextPinIdx = nextPinIdx;
+    if (out[i].pin != null) nextPinIdx = i;
+  }
+  out.forEach(r => {
+    if (r.nextPinIdx >= 0) {
+      const n = out[r.nextPinIdx];
+      r.pinTarget = n.pin;
+      r.pinName = n.card.data.name;
+      r.pinDrift = n.late > 0 ? n.late : -(n.wait);   // 正數＝慢了，負數＝有餘裕
+    }
+  });
+
+  /* 營業時間比對：到的時候有沒有開門。 */
+  const dp = dateParts(dayDate(d));
+  out.forEach(r => {
+    const per = r.card.data.place && r.card.data.place.hoursPeriods;
+    r.hours = isOpenAt(per, dp.w, r.arrive);
+    const per2 = per;
+    if (per2 && r.hours.open) {
+      const atLeave = isOpenAt(per2, dp.w, r.depart);
+      r.leaveClosed = !atLeave.open && !atLeave.unknown;
+    }
+  });
+  return out;
+}
+
+/* Google 的 periods 以星期日為 0，跨夜的時段 close.day 會落在隔天。 */
+function isOpenAt(periods, weekday, minutes) {
+  if (!periods || !periods.length) return { unknown:true, open:false };
+  const off = Math.floor(minutes / 1440);
+  const w = ((weekday + off) % 7 + 7) % 7;
+  const m = ((minutes % 1440) + 1440) % 1440;
+  const t = w * 1440 + m;
+  for (const p of periods) {
+    if (!p || !p.open) continue;
+    if (!p.close) return { unknown:false, open:true };            // 24 小時營業
+    const start = p.open.day * 1440 + (p.open.hour || 0) * 60 + (p.open.minute || 0);
+    let end = p.close.day * 1440 + (p.close.hour || 0) * 60 + (p.close.minute || 0);
+    if (end <= start) end += 7 * 1440;
+    if ((t >= start && t < end) || (t + 7 * 1440 >= start && t + 7 * 1440 < end))
+      return { unknown:false, open:true };
+  }
+  return { unknown:false, open:false };
+}
+
+/* ═══ 雲端同步 ═══════════════════════════════════════════════ */
+async function rpc(fn, args) {
+  const r = await fetch(CFG.url + '/rest/v1/rpc/' + fn, {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json', apikey:CFG.key, Authorization:'Bearer ' + CFG.key },
+    body: JSON.stringify(args),
+  });
+  const txt = await r.text();
+  if (!r.ok) { const e = new Error(txt || ('HTTP ' + r.status)); e.status = r.status; throw e; }
+  return txt ? JSON.parse(txt) : null;
+}
+
+async function pushCard(c) {
+  const payload = await encJSON(c.data, S.key);
+  const rows = await rpc('travel_card_push', {
+    p_code: S.trip.code, p_auth_hash: S.auth, p_id: c.id,
+    p_day_index: c.dayIndex, p_order_key: c.orderKey, p_payload: payload,
+    p_deleted: !!c.deleted, p_base_rev: c.rev || 0, p_updated_by: S.trip.nick || '',
+  });
+  const row = rows && rows[0];
+  if (!row) throw new Error('EMPTY_PUSH');
+  if (row.ok === false) {
+    /* 別人先改了同一張。不猜誰對——把對方的版本擺出來讓人選。 */
+    c.conflict = { data: await decJSON(row.payload, S.key), rev: row.rev,
+                   by: row.updated_by, at: row.updated_at,
+                   dayIndex: row.day_index, orderKey: row.order_key };
+    await dbPut('cards', c);
+    return false;
+  }
+  c.rev = row.rev; c.dirty = false; c.conflict = null; c.updatedAt = row.updated_at;
+  await dbPut('cards', c);
+  return true;
+}
+
+async function pullCards() {
+  const rows = await rpc('travel_cards_pull', {
+    p_code: S.trip.code, p_auth_hash: S.auth, p_since: S.trip.lastPull || null,
+  });
+  let newest = S.trip.lastPull || null;
+  for (const row of (rows || [])) {
+    if (!newest || row.updated_at > newest) newest = row.updated_at;
+    const local = S.cards.find(c => c.id === row.id);
+    if (local && local.dirty && local.rev !== row.rev) {
+      local.conflict = { data: await decJSON(row.payload, S.key), rev: row.rev,
+                         by: row.updated_by, at: row.updated_at,
+                         dayIndex: row.day_index, orderKey: row.order_key };
+      await dbPut('cards', local);
+      continue;
+    }
+    if (local && local.rev === row.rev && !local.dirty) continue;
+    const rec = {
+      id: row.id, trip: S.trip.code, dayIndex: row.day_index, orderKey: row.order_key,
+      data: await decJSON(row.payload, S.key), rev: row.rev, deleted: row.deleted,
+      dirty:false, conflict:null, updatedBy: row.updated_by, updatedAt: row.updated_at,
+    };
+    await dbPut('cards', rec);
+    const i = S.cards.findIndex(c => c.id === row.id);
+    if (i >= 0) S.cards[i] = rec; else S.cards.push(rec);
+  }
+  if (newest !== S.trip.lastPull) { S.trip.lastPull = newest; await saveTripLocal(); }
+}
+
+async function pushMeta() {
+  const meta = await encJSON(tripMeta(), S.key);
+  const rows = await rpc('travel_push_meta', {
+    p_code: S.trip.code, p_auth_hash: S.auth, p_meta: meta, p_base_rev: S.trip.metaRev || 1,
+  });
+  const row = rows && rows[0];
+  if (!row) return false;
+  if (row.ok === false) {
+    /* 設定撞車就以雲端為準：它的內容量小，重打一次比合併划算。 */
+    Object.assign(S.trip, await decJSON(row.meta, S.key));
+    S.trip.metaRev = row.meta_rev; S.trip.dirtyMeta = false;
+    await saveTripLocal();
+    toast('旅程設定已被其他人更新，已改用雲端版本');
+    return false;
+  }
+  S.trip.metaRev = row.meta_rev; S.trip.dirtyMeta = false;
+  await saveTripLocal();
+  return true;
+}
+
+let syncTimer = null;
+async function syncNow(quiet) {
+  if (!S.trip || !S.key || S.syncing) return;
+  if (!navigator.onLine) { S.syncErr = ''; renderSync(); return; }
+  S.syncing = true; S.syncErr = ''; renderSync();
+  try {
+    if (S.trip.dirtyMeta) await pushMeta();
+    for (const c of S.cards.filter(c => c.dirty && !c.conflict)) await pushCard(c);
+    await pullCards();
+    S.trip.lastSync = new Date().toISOString();
+    await saveTripLocal();
+    if (!quiet) toast('已同步');
+    render();
+  } catch (e) {
+    S.syncErr = String(e.message || e).slice(0, 120);
+  } finally {
+    S.syncing = false; renderSync();
+  }
+}
+function startSyncLoop() {
+  clearInterval(syncTimer);
+  /* 前景每 12 秒對一次，離開畫面就停——旅遊時電量比即時性重要。 */
+  syncTimer = setInterval(() => {
+    if (document.visibilityState === 'visible' && !$('#app').classList.contains('hide')) syncNow(true);
+  }, 12000);
+}
+
+/* ═══ Google 地圖代理 ═══════════════════════════════════════ */
+async function gmap(op, body) {
+  const r = await fetch(CFG.url + '/functions/v1/gmap', {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json', apikey:CFG.key, Authorization:'Bearer ' + CFG.key },
+    body: JSON.stringify(Object.assign({ op, code:S.trip.code, authHash:S.auth }, body)),
+  });
+  let j = null;
+  try { j = await r.json(); } catch (e) { j = null; }
+  if (!r.ok) {
+    const err = new Error((j && j.error) || ('HTTP ' + r.status));
+    err.code = (j && j.error) || ('HTTP_' + r.status);
+    throw err;
+  }
+  return j;
+}
+function gmapMsg(e) {
+  if (e.code === 'NO_API_KEY') return '還沒設定 Google API key，請先手動填寫（見 docs/GOOGLE-MAPS-SETUP.md）';
+  if (e.code === 'NOT_FOUND')  return 'Google 找不到這個地點，請改用名稱搜尋或手動填寫';
+  if (e.code === 'AUTH_FAILED') return '旅程驗證失敗，請重新進入旅程';
+  return '抓取失敗：' + (e.code || e.message);
+}
+
+/* 自動補上還沒算過的路程。只算「兩端都有座標、而且還沒有結果」的段，
+   順序改了才會失效重算——每一段都是一次 Routes 呼叫，不亂花。 */
+async function ensureLegs(d, force) {
+  if (!S.trip.autoRoute && !force) return;
+  const list = dayCards(d);
+  const jobs = [];
+  for (let i = 0; i < list.length - 1; i++) {
+    const a = list[i], b = list[i + 1];
+    const pa = a.data.place, pb = b.data.place;
+    if (!pa || !pb || pa.lat == null || pb.lat == null) continue;
+    const mode = (a.data.leg && a.data.leg.mode) || S.trip.defaultMode || 'drive';
+    const sig = [pa.lat, pa.lng, pb.lat, pb.lng, mode].join('|');
+    if (!force && a.data.leg && a.data.leg.min != null && a.data.leg.sig === sig) continue;
+    jobs.push({ card:a, sig, mode,
+      origin:{ lat:pa.lat, lng:pa.lng }, destination:{ lat:pb.lat, lng:pb.lng } });
+  }
+  if (!jobs.length) return;
+  try {
+    const res = await gmap('route_batch', {
+      legs: jobs.map(j => ({ origin:j.origin, destination:j.destination, mode:j.mode })),
+    });
+    for (let i = 0; i < jobs.length; i++) {
+      const r = res.legs[i]; if (!r || r.seconds == null) continue;
+      jobs[i].card.data.leg = { mode:jobs[i].mode, min:Math.round(r.seconds / 60),
+                                meters:r.meters, sig:jobs[i].sig, at:new Date().toISOString() };
+      await touch(jobs[i].card);
+    }
+    render();
+  } catch (e) {
+    if (e.code === 'NO_API_KEY') toast('路程要 Google API key 才算得出來，可先自己填');
+    else toast(gmapMsg(e));
+  }
+}
+
+/* ═══ 天氣（Open-Meteo，免 key） ════════════════════════════ */
+const WCODE = { 0:'晴', 1:'大致晴', 2:'多雲時晴', 3:'陰', 45:'霧', 48:'霧淞',
+  51:'毛毛雨', 53:'毛毛雨', 55:'毛毛雨', 61:'小雨', 63:'雨', 65:'大雨',
+  71:'小雪', 73:'雪', 75:'大雪', 80:'陣雨', 81:'陣雨', 82:'強陣雨',
+  95:'雷雨', 96:'雷雨冰雹', 99:'雷雨冰雹' };
+async function loadWeather(d) {
+  if (S.weather[d] !== undefined) return;
+  const c = dayCards(d).find(x => x.data.place && x.data.place.lat != null);
+  if (!c) { S.weather[d] = null; return; }
+  const date = dayDate(d);
+  /* 預報只到 16 天，更遠的日期回來會是空的——那就不顯示，不要編。 */
+  const diff = (new Date(date + 'T12:00:00') - new Date(todayISO() + 'T12:00:00')) / 86400000;
+  if (diff < 0 || diff > 15) { S.weather[d] = null; return; }
+  S.weather[d] = null;
+  try {
+    const u = 'https://api.open-meteo.com/v1/forecast?latitude=' + c.data.place.lat +
+      '&longitude=' + c.data.place.lng +
+      '&daily=weather_code,temperature_2m_max,temperature_2m_min&timezone=auto' +
+      '&start_date=' + date + '&end_date=' + date;
+    const j = await (await fetch(u)).json();
+    if (j && j.daily && j.daily.time && j.daily.time.length) {
+      S.weather[d] = { code:j.daily.weather_code[0],
+        tmax:Math.round(j.daily.temperature_2m_max[0]),
+        tmin:Math.round(j.daily.temperature_2m_min[0]) };
+      render();
+    }
+  } catch (e) { /* 沒網路就算了，天氣不是主要功能 */ }
+}
+</script>
+
+<script>
+'use strict';
+/* ═══ 旅程與卡片的寫入 ═══════════════════════════════════════ */
+function tripMeta() {
+  const t = S.trip;
+  return { name:t.name, startDate:t.startDate, days:t.days, defaultStart:t.defaultStart,
+           dayStarts:t.dayStarts, defaultMode:t.defaultMode, autoRoute:t.autoRoute, cats:t.cats };
+}
+async function saveTripLocal() { if (S.trip) await dbPut('trips', S.trip); }
+async function touchMeta() { S.trip.dirtyMeta = true; await saveTripLocal(); scheduleSync(); }
+async function touch(card) { card.dirty = true; await dbPut('cards', card); scheduleSync(); }
+
+let syncDebounce = null;
+function scheduleSync() {
+  clearTimeout(syncDebounce);
+  syncDebounce = setTimeout(() => syncNow(true), 1200);
+}
+
+function blankCard(dayIndex, data) {
+  const list = dayCards(dayIndex);
+  return {
+    id: uuid(), trip: S.trip.code, dayIndex,
+    orderKey: keyAfter(list.length ? list[list.length - 1].orderKey : ''),
+    data: Object.assign({ name:'', catId:'', stayMin:60, pinTime:'', note:'',
+                          links:[], todos:[], images:[], place:null, leg:null }, data || {}),
+    rev:0, deleted:false, dirty:true, conflict:null,
+    updatedBy: S.trip.nick || '', updatedAt: new Date().toISOString(),
+  };
+}
+async function addCard(dayIndex, data) {
+  const c = blankCard(dayIndex, data);
+  S.cards.push(c);
+  await dbPut('cards', c);
+  scheduleSync();
+  return c;
+}
+async function delCard(c) {
+  c.deleted = true; c.dirty = true;
+  await dbPut('cards', c);
+  scheduleSync();
+}
+async function moveCard(c, dayIndex, beforeId) {
+  const list = dayCards(dayIndex).filter(x => x.id !== c.id);
+  let a = '', b = '';
+  if (beforeId == null) { a = list.length ? list[list.length - 1].orderKey : ''; }
+  else {
+    const i = list.findIndex(x => x.id === beforeId);
+    if (i >= 0) { a = i > 0 ? list[i - 1].orderKey : ''; b = list[i].orderKey; }
+  }
+  c.dayIndex = dayIndex;
+  c.orderKey = keyBetween(a, b);
+  await touch(c);
+}
+
+/* ═══ 進場畫面 ═══════════════════════════════════════════════ */
+async function renderGate() {
+  const trips = await dbAll('trips');
+  const b = $('#gateBody');
+  let h = '';
+  if (trips.length) {
+    h += '<div class="panel"><h3>我的旅程</h3>';
+    trips.sort((x, y) => (y.startDate || '').localeCompare(x.startDate || ''));
+    trips.forEach((t, i) => {
+      const end = t.startDate ? dateAdd(t.startDate, (t.days || 1) - 1) : '';
+      const state = tripState(t);
+      h += '<button class="triprow" data-open="' + esc(t.code) + '">' +
+             '<span class="tripswatch" style="background:' + hueOf(i) + '"></span>' +
+             '<span class="tripname"><b>' + esc(t.name || '未命名旅程') + '</b>' +
+             '<span>' + esc(t.startDate || '') + (end ? ' – ' + esc(end) : '') +
+             ' · ' + esc(t.code) + ' · ' + state + '</span></span>' +
+             '<span class="lab">開啟 →</span></button>';
+    });
+    h += '</div>';
+  }
+  h += '<div class="panel"><h3>加入既有旅程</h3>' +
+       '<div class="row" style="gap:8px">' +
+       '<input class="inp" id="joinCode" placeholder="旅程代碼" autocapitalize="characters" ' +
+       'autocorrect="off" spellcheck="false" style="flex:1 1 130px;text-transform:uppercase">' +
+       '<input class="inp" id="joinPw" type="password" placeholder="密碼" style="flex:1 1 110px">' +
+       '</div><button class="btn fill wide" id="btnJoin" style="margin-top:9px">加入</button>' +
+       '<p class="hint">代碼與密碼由建立旅程的人給你。內容在你手機上解密，' +
+       '伺服器看不到行程內容。</p></div>';
+
+  h += '<div class="panel"><h3>建立新旅程</h3>' +
+       '<div class="fld stack"><span class="lab">名稱</span>' +
+       '<input class="inp" id="newName" placeholder="例：京都五日"></div>' +
+       '<div class="row" style="gap:8px">' +
+       '<div style="flex:1 1 150px"><span class="lab">出發日</span>' +
+       '<input class="inp" id="newStart" type="date" value="' + todayISO() + '"></div>' +
+       '<div style="flex:0 0 88px"><span class="lab">天數</span>' +
+       '<input class="inp" id="newDays" type="number" min="1" max="60" value="5"></div></div>' +
+       '<div class="fld stack" style="margin-top:12px"><span class="lab">密碼（共編用）</span>' +
+       '<input class="inp" id="newPw" type="password" placeholder="至少 4 個字"></div>' +
+       '<button class="btn fill wide" id="btnCreate">建立</button>' +
+       '<p class="hint">密碼就是金鑰。忘記密碼＝這趟行程救不回來，' +
+       '因為伺服器上只有密文，我們沒有備份。</p></div>';
+
+  b.innerHTML = h;
+  $$('[data-open]', b).forEach(n => n.onclick = () => askUnlock(n.dataset.open));
+  $('#btnJoin').onclick = doJoin;
+  $('#btnCreate').onclick = doCreate;
+}
+function tripState(t) {
+  if (!t.startDate) return '未定日期';
+  const end = dateAdd(t.startDate, (t.days || 1) - 1), today = todayISO();
+  if (today < t.startDate) {
+    const n = Math.round((new Date(t.startDate) - new Date(today)) / 86400000);
+    return '還有 ' + n + ' 天';
+  }
+  if (today > end) return '已結束';
+  return '進行中';
+}
+
+async function askUnlock(code) {
+  const t = await dbGet('trips', code);
+  if (!t) return;
+  if (t.keyRaw) {
+    try {
+      S.trip = t;
+      S.key = await crypto.subtle.importKey('raw', t.keyRaw, { name:'AES-GCM' }, true, ['encrypt','decrypt']);
+      S.auth = t.authHash;
+      return enterTrip();
+    } catch (e) { /* 金鑰壞了就退回問密碼 */ }
+  }
+  openSheet('輸入密碼',
+    '<div class="fld stack"><span class="lab">' + esc(t.name || t.code) + ' 的密碼</span>' +
+    '<input class="inp" id="unlockPw" type="password" autofocus></div>' +
+    '<label class="row" style="margin:10px 0 14px"><input type="checkbox" id="unlockRemember" checked> ' +
+    '<span style="font-size:15px">記住這台裝置</span></label>' +
+    '<button class="btn fill wide" id="unlockGo">開啟</button>' +
+    '<p class="hint" id="unlockErr" style="color:var(--vermilion)"></p>',
+    () => {
+      $('#unlockGo').onclick = async () => {
+        const pw = $('#unlockPw').value;
+        try {
+          const key = await deriveKey(pw, t.salt, t.iters);
+          await decJSON(t.verifier, key);      // 密碼不對就會在這裡丟例外
+          S.trip = t; S.key = key;
+          S.auth = await authHash(t.code, pw, t.salt);
+          t.authHash = S.auth;
+          if ($('#unlockRemember').checked)
+            t.keyRaw = await crypto.subtle.exportKey('raw', key);
+          await dbPut('trips', t);
+          closeSheet(); enterTrip();
+        } catch (e) { $('#unlockErr').textContent = '密碼不對'; }
+      };
+      $('#unlockPw').addEventListener('keydown', e => { if (e.key === 'Enter') $('#unlockGo').click(); });
+    });
+}
+
+async function doCreate() {
+  const name = $('#newName').value.trim() || '未命名旅程';
+  const startDate = $('#newStart').value || todayISO();
+  const days = clamp(parseInt($('#newDays').value, 10) || 5, 1, 60);
+  const pw = $('#newPw').value;
+  if (pw.length < 4) return toast('密碼至少 4 個字');
+  const salt = b64(crypto.getRandomValues(new Uint8Array(16)));
+  const key = await deriveKey(pw, salt, CFG.iters);
+  const verifier = await encJSON({ ok:'travel' }, key);
+  const meta = { name, startDate, days, defaultStart:'08:30', dayStarts:{},
+                 defaultMode:'drive', autoRoute:true, cats:DEFAULT_CATS.slice() };
+  const metaEnc = await encJSON(meta, key);
+
+  let code = '', ah = '', done = false;
+  for (let i = 0; i < 5 && !done; i++) {
+    code = newCode();
+    ah = await authHash(code, pw, salt);
+    try {
+      await rpc('travel_create', { p_code:code, p_salt:salt, p_iters:CFG.iters,
+        p_verifier:verifier, p_auth_hash:ah, p_meta:metaEnc });
+      done = true;
+    } catch (e) {
+      if (!/CODE_TAKEN/.test(String(e.message))) {
+        /* 連不上雲端也要能開始排行程：先在本機建，之後再推上去。 */
+        done = true;
+        toast('目前離線，旅程先建在這台裝置上');
+      }
+    }
+  }
+  const rec = Object.assign({ code, salt, iters:CFG.iters, verifier, authHash:ah,
+    metaRev:1, dirtyMeta:false, lastPull:null, lastSync:null, nick:await kvGet('nick',''),
+    keyRaw:await crypto.subtle.exportKey('raw', key), createdAt:new Date().toISOString() }, meta);
+  await dbPut('trips', rec);
+  S.trip = rec; S.key = key; S.auth = ah;
+  enterTrip();
+}
+
+async function doJoin() {
+  const code = $('#joinCode').value.trim().toUpperCase();
+  const pw = $('#joinPw').value;
+  if (!code || !pw) return toast('代碼與密碼都要填');
+  try {
+    const rows = await rpc('travel_salt', { p_code: code });
+    const row = rows && rows[0];
+    if (!row) return toast('找不到這個旅程代碼');
+    const key = await deriveKey(pw, row.salt, row.iters);
+    const ah = await authHash(code, pw, row.salt);
+    let open = null;
+    try { open = (await rpc('travel_open', { p_code:code, p_auth_hash:ah }))[0]; }
+    catch (e) { return toast('密碼不對'); }
+    await decJSON(open.verifier, key);
+    const meta = await decJSON(open.meta, key);
+    const rec = Object.assign({ code, salt:row.salt, iters:row.iters, verifier:open.verifier,
+      authHash:ah, metaRev:open.meta_rev, dirtyMeta:false, lastPull:null, lastSync:null,
+      nick:await kvGet('nick',''), keyRaw:await crypto.subtle.exportKey('raw', key),
+      createdAt:new Date().toISOString() }, meta);
+    await dbPut('trips', rec);
+    S.trip = rec; S.key = key; S.auth = ah;
+    enterTrip();
+  } catch (e) { toast('加入失敗：' + (e.message || e).toString().slice(0, 80)); }
+}
+
+async function enterTrip() {
+  S.cards = (await dbByTrip(S.trip.code)) || [];
+  const ti = todayIndex();
+  S.day = ti >= 0 ? ti : 0;
+  S.open = null;
+  $('#gate').classList.remove('on');
+  $('#app').classList.remove('hide');
+  $('#dock').classList.remove('hide');
+  render();
+  startSyncLoop();
+  syncNow(true);
+  if (!S.trip.nick) askNick();
+}
+function leaveTrip() {
+  clearInterval(syncTimer);
+  S.trip = null; S.key = null; S.cards = []; S.weather = {};
+  $('#app').classList.add('hide');
+  $('#dock').classList.add('hide');
+  $('#road').classList.remove('on');
+  applyBoard(HUES[3]);
+  $('#gate').classList.add('on');
+  renderGate();
+}
+function askNick() {
+  openSheet('你是誰',
+    '<p class="prose" style="margin-bottom:12px">同行的人會看到是誰改了哪一張卡片。</p>' +
+    '<div class="fld stack"><span class="lab">暱稱</span>' +
+    '<input class="inp" id="nickIn" placeholder="例：Jeremy" maxlength="12"></div>' +
+    '<button class="btn fill wide" id="nickGo">好了</button>',
+    () => { $('#nickGo').onclick = async () => {
+      const v = $('#nickIn').value.trim() || '旅伴';
+      S.trip.nick = v; await kvSet('nick', v); await saveTripLocal();
+      closeSheet(); }; });
+}
+</script>
+
+<script>
+'use strict';
+/* ═══ Google Maps 網址（不花錢，官方的 URL 格式） ═══════════ */
+const GMODE = { drive:'driving', transit:'transit', walk:'walking', bicycle:'bicycling' };
+function pt(c) {
+  const p = c && c.data.place;
+  if (p && p.lat != null) return p.lat + ',' + p.lng;
+  return encodeURIComponent(c ? c.data.name : '');
+}
+function gmPlace(c) {
+  const p = c.data.place || {};
+  let u = 'https://www.google.com/maps/search/?api=1&query=' +
+          encodeURIComponent(c.data.name || (p.lat + ',' + p.lng));
+  if (p.placeId) u += '&query_place_id=' + encodeURIComponent(p.placeId);
+  return u;
+}
+function gmDir(a, b, mode) {
+  let u = 'https://www.google.com/maps/dir/?api=1&origin=' + pt(a) + '&destination=' + pt(b) +
+          '&travelmode=' + (GMODE[mode] || 'driving');
+  const pa = a.data.place, pb = b.data.place;
+  if (pa && pa.placeId) u += '&origin_place_id=' + encodeURIComponent(pa.placeId);
+  if (pb && pb.placeId) u += '&destination_place_id=' + encodeURIComponent(pb.placeId);
+  return u;
+}
+function gmDay(list, mode) {
+  if (list.length < 2) return null;
+  /* Google 的 URL API 最多吃 9 個中途點，超過就只帶前 9 個。 */
+  const mid = list.slice(1, -1).slice(0, 9);
+  let u = 'https://www.google.com/maps/dir/?api=1&origin=' + pt(list[0]) +
+          '&destination=' + pt(list[list.length - 1]) + '&travelmode=' + (GMODE[mode] || 'driving');
+  if (mid.length) u += '&waypoints=' + mid.map(pt).join('%7C');
+  return u;
+}
+const nowMin = () => { const d = new Date(); return d.getHours() * 60 + d.getMinutes(); };
+const POCKET_HUE = '#565049';
+const UTIL_HUE = '#3B3833';
+
+/* ═══ 畫面 ═══════════════════════════════════════════════════ */
+function render() {
+  if (!S.trip) return;
+  applyBoard(S.day < 0 ? POCKET_HUE : hueOf(S.day));
+  renderRail(); renderPlate(); renderSync();
+  if ($('#road').classList.contains('on')) renderRoad();
+}
+
+function renderRail() {
+  const r = $('#rail'); const days = S.trip.days || 1;
+  let h = '';
+  for (let i = 0; i < days; i++) {
+    const n = dayCards(i).length;
+    const dp = dateParts(dayDate(i));
+    h += '<button class="tab' + (S.day === i ? ' on' : '') + '" data-day="' + i + '" ' +
+         'style="background:' + hueOf(i) + ';min-height:' + (58 + Math.min(n, 9) * 7) + 'px" ' +
+         'aria-label="第 ' + (i + 1) + ' 天">Day ' + (i + 1) +
+         '<span class="td">' + dp.m + '/' + dp.d + ' 週' + WEEK[dp.w] + '</span></button>';
+  }
+  h += '<button class="tab util cjk' + (S.day === -1 ? ' on' : '') + '" data-day="-1" ' +
+       'style="background:' + (S.day === -1 ? POCKET_HUE : UTIL_HUE) + '">候選口袋</button>';
+  h += '<button class="tab util cjk" id="tabSet" style="background:' + UTIL_HUE + '">旅程設定</button>';
+  r.innerHTML = h;
+  $$('[data-day]', r).forEach(n => n.onclick = () => {
+    S.day = parseInt(n.dataset.day, 10); S.open = null;
+    render(); $('#plate').scrollTop = 0;
+    if (S.day >= 0) { ensureLegs(S.day); loadWeather(S.day); }
+  });
+  $('#tabSet').onclick = sheetTrip;
+}
+
+function leafHTML(r, i, flags) {
+  const c = r.card, d = c.data;
+  const cat = catBy(d.catId);
+  const cls = 'leaf' + (flags.top ? ' top' : '') + (flags.past ? ' past' : '');
+  let meta = [];
+  if (cat) meta.push('<span>' + esc(cat.name) + '</span>');
+  const p = d.place || {};
+  if (p.rating != null) meta.push('★ ' + p.rating + (p.ratingCount ? ' (' + p.ratingCount + ')' : ''));
+  if (r.hours && r.hours.unknown === false && !r.hours.open) meta.push('到時沒開');
+  if (d.todos && d.todos.length) {
+    const done = d.todos.filter(t => t.done).length;
+    meta.push('預定 ' + done + '/' + d.todos.length);
+  }
+
+  let err = '';
+  if (c.conflict) {
+    err += '<div class="errata"><b>撞車</b><span>' + esc(c.conflict.by || '有人') +
+           ' 在你之後也改了這張。<button class="btn" data-keep="' + c.id +
+           '" style="border-color:#fff;color:#fff;min-height:26px;padding:2px 8px;margin:0 4px">保留我的</button>' +
+           '<button class="btn" data-take="' + c.id +
+           '" style="border-color:#fff;color:#fff;min-height:26px;padding:2px 8px">用對方的</button></span></div>';
+  }
+  if (r.late > 0)
+    err += '<div class="errata"><b>遲</b><span>比釘選的 ' + min2hm(r.pin) + ' 慢了 ' +
+           durTxt(r.late) + '，往後的時刻都已經順延。</span></div>';
+  if (r.hours && r.hours.unknown === false && !r.hours.open)
+    err += '<div class="errata"><b>休</b><span>' + min2hm(r.arrive) + ' 到的時候沒有營業。</span></div>';
+  else if (r.leaveClosed)
+    err += '<div class="errata warn"><b>關</b><span>停到 ' + min2hm(r.depart) +
+           ' 時已經打烊，停留時間可能要縮短。</span></div>';
+
+  return '<article class="' + cls + '" data-card="' + c.id + '">' +
+    '<div class="lrow">' +
+      '<div class="lmar" data-grip="' + c.id + '">' +
+        '<div class="ltime">' + min2hm(r.arrive) + '</div>' +
+        '<div class="lstay">停 ' + durMin(d.stayMin) + '</div>' +
+        (d.pinTime ? '<div class="lstay" style="color:var(--ink)">釘 ' + esc(d.pinTime) + '</div>' : '') +
+        '<span class="grip"></span>' +
+      '</div>' +
+      '<div class="lbody" data-open="' + c.id + '">' +
+        (cat ? '<span class="tile">' + mark(cat.mark) + '</span>' : '') +
+        '<div style="min-width:0;flex:1">' +
+          '<div class="lname">' + (esc(d.name) || '<span style="color:var(--ink3)">未命名</span>') +
+          (flags.top ? '<span class="punch on" title="下一站" style="margin-left:7px"></span>' : '') + '</div>' +
+          (meta.length ? '<div class="lmeta">' + meta.join('<span class="sep">·</span>') + '</div>' : '') +
+        '</div>' +
+      '</div>' +
+    '</div>' + err +
+    (S.open === c.id ? detailHTML(c, r) : '') +
+  '</article>';
+}
+
+function detailHTML(c, r) {
+  const d = c.data, p = d.place || {};
+  let h = '<div class="detail">';
+  if (d.note)
+    h += '<div class="blk"><span class="lab">介紹</span><div class="prose">' +
+         esc(d.note).replace(/\n/g, '<br>') + '</div></div>';
+  if (p.hoursText && p.hoursText.length) {
+    const w = dateParts(dayDate(c.dayIndex)).w;
+    /* Google 給的順序是週一起算，本地的 getDay() 是週日起算，差一格。 */
+    const idx = (w + 6) % 7;
+    h += '<div class="blk"><span class="lab">營業</span><div class="hours">' +
+      '<div class="today">' + esc(p.hoursText[idx] || p.hoursText[0]) +
+      '<button class="btn" data-hours="' + c.id + '" style="min-height:22px;padding:1px 8px;' +
+      'margin-left:8px;font-size:10px">全部</button></div>' +
+      '<div class="hidden-hours hide">' +
+      p.hoursText.map((s, i) => i === idx ? '' : '<div>' + esc(s) + '</div>').join('') +
+      '</div></div></div>';
+  }
+  if (p.address || p.phone) {
+    h += '<div class="blk"><span class="lab">地點</span><div>';
+    if (p.address) h += '<div class="hours" style="color:var(--ink)">' + esc(p.address) + '</div>';
+    if (p.phone) h += '<a class="linkline" href="tel:' + esc(p.phone.replace(/\s/g, '')) + '">☎ ' + esc(p.phone) + '</a>';
+    h += '</div></div>';
+  }
+  if (d.links && d.links.length) {
+    h += '<div class="blk"><span class="lab">連結</span><div>' +
+      d.links.map(l => '<a class="linkline" href="' + esc(l.url) + '" target="_blank" rel="noopener">→ ' +
+        esc(l.label || l.url) + '</a>').join('') + '</div></div>';
+  }
+  if (p.website)
+    h += '<div class="blk"><span class="lab">官網</span><div><a class="linkline" href="' +
+         esc(p.website) + '" target="_blank" rel="noopener">→ ' + esc(p.website) + '</a></div></div>';
+  if (d.todos && d.todos.length) {
+    h += '<div class="blk"><span class="lab">預定</span><div>' +
+      d.todos.map(t => '<div class="todo' + (t.done ? ' done' : '') + '">' +
+        '<button class="punch' + (t.done ? ' on' : '') + '" data-todo="' + c.id + '|' + t.id + '" ' +
+        'aria-label="完成"></button><span class="t">' + esc(t.text) + '</span></div>').join('') +
+      '</div></div>';
+  }
+  if (d.images && d.images.length) {
+    h += '<div class="blk"><span class="lab">圖片</span><div class="imgs">' +
+      d.images.map(u => '<img src="' + esc(u) + '" alt="" loading="lazy">').join('') + '</div></div>';
+  }
+  const isStay = d.catId === 'stay' || (catBy(d.catId) && catBy(d.catId).mark === 'stay');
+  h += '<div class="blk"><span class="lab">動作</span><div class="row">' +
+    '<button class="btn" data-edit="' + c.id + '">編輯</button>' +
+    '<a class="btn" href="' + gmPlace(c) + '" target="_blank" rel="noopener">' + mark('pin','sm') + ' 地圖</a>' +
+    '<button class="btn" data-pin="' + c.id + '">' + (d.pinTime ? '改釘選' : '釘選時間') + '</button>' +
+    '<button class="btn" data-move="' + c.id + '">移到…</button>' +
+    (isStay && c.dayIndex >= 0 ? '<button class="btn" data-dup="' + c.id + '">複製到隔天開頭</button>' : '') +
+    '<button class="btn" data-del="' + c.id + '" style="color:var(--vermilion);border-color:var(--vermilion)">刪除</button>' +
+    '</div></div>';
+  return h + '</div>';
+}
+
+function renderPlate() {
+  const plate = $('#plate');
+  const d = S.day;
+  const sched = d >= 0 ? computeSchedule(d) : dayCards(-1).map(c => ({ card:c, arrive:null, depart:null, late:0, hours:{unknown:true} }));
+  S.sched = sched;
+  const ti = todayIndex();
+  const isToday = d === ti;
+  let topIdx = -1;
+  if (d >= 0) {
+    if (isToday) { const n = nowMin(); topIdx = sched.findIndex(r => r.depart > n); }
+    else if (ti < 0 || d > ti) topIdx = 0;
+  }
+
+  let h = '';
+  const spine = $('#spine');
+  if (spine) spine.textContent = 'Travel · ' + (S.trip.name || '') +
+    (d >= 0 ? ' · Day ' + (d + 1) : ' · Pocket');
+  if (d >= 0) {
+    const dp = dateParts(dayDate(d));
+    const w = S.weather[d];
+    const firstPin = sched.find(r => r.pinTarget != null);
+    const list = dayCards(d);
+    const dayUrl = gmDay(list.filter(c => c.data.place && c.data.place.lat != null),
+                         S.trip.defaultMode);
+    h += '<div class="head"><div class="headtop">' +
+      '<button class="btn" id="btnHome" style="min-height:26px;padding:2px 8px">←</button>' +
+      '<span class="trip">' + esc(S.trip.name) + '</span></div>' +
+      '<div class="headmain"><div class="headmar">' +
+        '<div class="dnum">DAY</div><div class="dbig">' + (d + 1) + '</div></div>' +
+      '<div class="headbody">' +
+        '<div class="ddate">' + dp.m + ' 月 ' + dp.d + ' 日<span style="font-size:15px;color:var(--ink2)"> 週' + WEEK[dp.w] + '</span></div>' +
+        '<div class="dsub">' + (w ? (WCODE[w.code] || '') + ' ' + w.tmin + '–' + w.tmax + '°C · ' : '') +
+          list.length + ' 個行程' +
+          (sched.length ? ' · ' + min2hm(sched[0].arrive) + '–' + min2hm(sched[sched.length-1].depart) : '') +
+        '</div>' +
+        (firstPin ? '<div class="dsub" style="color:' + (firstPin.pinDrift > 0 ? 'var(--vermilion)' : 'var(--ink)') + '">' +
+          '距 ' + min2hm(firstPin.pinTarget) + ' ' + esc(firstPin.pinName) + '：' +
+          (firstPin.pinDrift > 0 ? '已慢 ' + durTxt(firstPin.pinDrift) : '尚有餘裕 ' + durTxt(-firstPin.pinDrift)) +
+          '</div>' : '') +
+        (sched.length > 1 ? '<div class="daybars">' + sched.map((r, k) =>
+          '<i class="' + (k === topIdx ? 'now' : '') + '" style="height:' +
+          clamp(Math.round((Number(r.card.data.stayMin) || 20) / 4), 4, 20) + 'px"></i>').join('') +
+          '</div>' : '') +
+        '<div class="startrow">' +
+          '<button class="btn" id="btnStart">出發 ' + dayStart(d) + '</button>' +
+          (dayUrl ? '<a class="btn" href="' + dayUrl + '" target="_blank" rel="noopener">當日全程地圖 ↗</a>' : '') +
+        '</div>' +
+      '</div></div></div>';
+  } else {
+    h += '<div class="head"><div class="headtop">' +
+      '<button class="btn" id="btnHome" style="min-height:26px;padding:2px 8px">←</button>' +
+      '<span class="trip">' + esc(S.trip.name) + '</span></div>' +
+      '<div class="headmain"><div class="headmar"><div class="dnum">POCKET</div>' +
+      '<div class="dbig">' + dayCards(-1).length + '</div></div><div class="headbody">' +
+      '<div class="ddate">候選口袋</div>' +
+      '<div class="dsub">想去但還沒排進哪一天的地方。按住左邊的時刻欄可以拖動順序，' +
+      '要換到某一天用卡片裡的「移到…」。</div>' +
+      '</div></div></div>';
+  }
+
+  if (!sched.length) {
+    h += '<div class="leaf"><div class="lbody" style="padding:22px 14px">' +
+      '<div class="lname" style="font-size:17px;color:var(--ink2)">' +
+      (d >= 0 ? '這一天還是空的。' : '口袋是空的。') + '</div>' +
+      '<p class="hint">從 Google 地圖分享一個地點，貼進「＋ 新增」就會自己長出地址與營業時間。</p>' +
+      '</div></div>';
+  }
+
+  sched.forEach((r, i) => {
+    const past = d >= 0 && (d < ti || (isToday && topIdx >= 0 && i < topIdx) || (isToday && topIdx < 0));
+    h += leafHTML(r, i, { top: i === topIdx, past });
+    if (i < sched.length - 1 && d >= 0) {
+      const c = r.card, nx = sched[i + 1].card;
+      const leg = c.data.leg || {};
+      const m = modeBy(leg.mode || S.trip.defaultMode);
+      h += '<div class="hinge">' +
+        '<button class="leg' + (leg.min == null ? ' miss' : '') + '" data-leg="' + c.id + '">' +
+          mark(m.mark, 'sm') + (leg.min == null ? '<span>路程未知</span>' :
+            '<b>' + leg.min + ' 分</b>' + (leg.meters ? '<span>' + dist(leg.meters) + '</span>' : '')) +
+        '</button>' +
+        '<a class="legdir" href="' + gmDir(c, nx, leg.mode || S.trip.defaultMode) +
+          '" target="_blank" rel="noopener">路線 ↗</a>' +
+      '</div>';
+    }
+  });
+
+  plate.innerHTML = h;
+  bindPlate();
+}
+
+function renderSync() {
+  const b = $('#syncBtn');
+  if (!S.trip) return;
+  const dirty = S.cards.filter(c => c.dirty).length + (S.trip.dirtyMeta ? 1 : 0);
+  const conflicts = S.cards.filter(c => c.conflict).length;
+  let t = '', cls = 'sync';
+  if (!navigator.onLine) t = '離線\n' + (dirty ? dirty + ' 筆待傳' : '已存本機');
+  else if (S.syncErr) { t = '同步失敗\n點一下重試'; cls += ' err'; }
+  else if (S.syncing) t = '同步中…';
+  else if (conflicts) { t = conflicts + ' 張撞車'; cls += ' err'; }
+  else if (dirty) t = dirty + ' 筆待傳';
+  else t = '已同步\n' + (S.trip.nick || '');
+  b.className = cls;
+  b.innerHTML = esc(t).replace(/\n/g, '<br>');
+}
+</script>
+
+<style>
+.insertline{position:absolute;left:0;right:12px;height:4px;border-radius:2px;background:var(--vermilion);
+  z-index:25;pointer-events:none;box-shadow:0 0 0 1px rgba(0,0,0,.3)}
+.lmar{touch-action:none;cursor:grab}
+/* 抓握處：三條細規線，比打孔輕，不搶類別方磚 */
+.lmar .grip{display:block;width:15px;height:6px;margin-top:5px;
+  background:repeating-linear-gradient(to bottom,var(--rule) 0 1px,transparent 1px 3px);opacity:.5}
+</style>
+<script>
+'use strict';
+/* ═══ 抽頁 ═══════════════════════════════════════════════════ */
+function openSheet(title, html, after) {
+  $('#sheetTitle').textContent = title;
+  $('#sheetBody').innerHTML = html;
+  $('#sheetWrap').classList.add('open');
+  if (after) after();
+}
+function closeSheet() { $('#sheetWrap').classList.remove('open'); }
+
+/* ═══ 板面上的互動 ═══════════════════════════════════════════ */
+function cardById(id) { return S.cards.find(c => c.id === id); }
+
+function bindPlate() {
+  const p = $('#plate');
+  const home = $('#btnHome'); if (home) home.onclick = leaveTrip;
+  const st = $('#btnStart'); if (st) st.onclick = sheetDayStart;
+  $$('[data-open]', p).forEach(n => n.onclick = () => {
+    S.open = (S.open === n.dataset.open) ? null : n.dataset.open;
+    renderPlate();
+    if (S.open) { const a = $('[data-card="' + S.open + '"]', p); if (a) a.scrollIntoView({ block:'nearest' }); }
+  });
+  $$('[data-grip]', p).forEach(n => n.addEventListener('pointerdown', e => gripDown(e, n.dataset.grip)));
+  $$('[data-edit]', p).forEach(n => n.onclick = () => sheetEdit(cardById(n.dataset.edit)));
+  $$('[data-pin]',  p).forEach(n => n.onclick = () => sheetPin(cardById(n.dataset.pin)));
+  $$('[data-move]', p).forEach(n => n.onclick = () => sheetMove(cardById(n.dataset.move)));
+  $$('[data-leg]',  p).forEach(n => n.onclick = () => sheetLeg(cardById(n.dataset.leg)));
+  $$('[data-dup]',  p).forEach(n => n.onclick = () => dupToNextDay(cardById(n.dataset.dup)));
+  $$('[data-del]',  p).forEach(n => n.onclick = async () => {
+    const c = cardById(n.dataset.del);
+    if (!confirm('刪除「' + (c.data.name || '這張卡') + '」？')) return;
+    await delCard(c); S.open = null; render();
+  });
+  $$('[data-hours]', p).forEach(n => n.onclick = e => {
+    e.stopPropagation();
+    const box = n.closest('.hours').querySelector('.hidden-hours');
+    box.classList.toggle('hide');
+    n.textContent = box.classList.contains('hide') ? '全部' : '收起';
+  });
+  $$('[data-todo]', p).forEach(n => n.onclick = async () => {
+    const [cid, tid] = n.dataset.todo.split('|');
+    const c = cardById(cid); const t = c.data.todos.find(x => x.id === tid);
+    if (!t) return;
+    t.done = !t.done; await touch(c); renderPlate();
+  });
+  $$('[data-keep]', p).forEach(n => n.onclick = async () => {
+    const c = cardById(n.dataset.keep);
+    c.rev = c.conflict.rev; c.conflict = null; c.dirty = true;
+    await dbPut('cards', c); syncNow(true); render();
+  });
+  $$('[data-take]', p).forEach(n => n.onclick = async () => {
+    const c = cardById(n.dataset.take);
+    c.data = c.conflict.data; c.dayIndex = c.conflict.dayIndex; c.orderKey = c.conflict.orderKey;
+    c.rev = c.conflict.rev; c.conflict = null; c.dirty = false;
+    await dbPut('cards', c); render();
+  });
+}
+
+/* ── 拖曳：抓左邊的時刻欄，放開才落位；拖的時候畫一條插入標線 ── */
+let DRAG = null;
+function gripDown(e, id) {
+  if (e.pointerType === 'mouse' && e.button !== 0) return;
+  const leaf = e.currentTarget.closest('.leaf');
+  DRAG = { id, leaf, startY: e.clientY, moved:false, line:null, targetIdx:0 };
+  window.addEventListener('pointermove', dragMove, { passive:false });
+  window.addEventListener('pointerup', dragEnd);
+  window.addEventListener('pointercancel', dragEnd);
+}
+function dragMove(e) {
+  if (!DRAG) return;
+  const dy = e.clientY - DRAG.startY;
+  if (!DRAG.moved) {
+    if (Math.abs(dy) < 6) return;
+    DRAG.moved = true;
+    DRAG.leaf.classList.add('drag');
+    DRAG.line = el('div', 'insertline');
+    $('#plate').appendChild(DRAG.line);
+  }
+  e.preventDefault();
+  DRAG.leaf.style.transform = 'translateY(' + dy + 'px)';
+
+  const plate = $('#plate'), pr = plate.getBoundingClientRect();
+  const leaves = $$('.leaf[data-card]', plate);
+  let idx = leaves.length;
+  for (let i = 0; i < leaves.length; i++) {
+    const r = leaves[i].getBoundingClientRect();
+    if (e.clientY < r.top + r.height / 2) { idx = i; break; }
+  }
+  DRAG.targetIdx = idx;
+  const ref = leaves[idx];
+  const y = ref ? ref.getBoundingClientRect().top
+                : (leaves.length ? leaves[leaves.length - 1].getBoundingClientRect().bottom : pr.top);
+  DRAG.line.style.top = (y - pr.top + plate.scrollTop - 2) + 'px';
+
+  if (e.clientY < pr.top + 70) plate.scrollTop -= 9;
+  else if (e.clientY > pr.bottom - 90) plate.scrollTop += 9;
+}
+async function dragEnd() {
+  window.removeEventListener('pointermove', dragMove);
+  window.removeEventListener('pointerup', dragEnd);
+  window.removeEventListener('pointercancel', dragEnd);
+  if (!DRAG) return;
+  const d = DRAG; DRAG = null;
+  if (d.line) d.line.remove();
+  d.leaf.style.transform = ''; d.leaf.classList.remove('drag');
+  if (!d.moved) return;
+  const ids = $$('.leaf[data-card]', $('#plate')).map(n => n.dataset.card);
+  let before = d.targetIdx < ids.length ? ids[d.targetIdx] : null;
+  if (before === d.id) before = (d.targetIdx + 1 < ids.length) ? ids[d.targetIdx + 1] : null;
+  const c = cardById(d.id);
+  if (!c) return;
+  await moveCard(c, S.day, before);
+  if (S.day >= 0) ensureLegs(S.day);
+  render();
+}
+
+/* ═══ 新增卡片 ═══════════════════════════════════════════════ */
+function sheetAdd() {
+  const dayOpts = ['<option value="-1">候選口袋</option>'];
+  for (let i = 0; i < S.trip.days; i++) {
+    const dp = dateParts(dayDate(i));
+    dayOpts.push('<option value="' + i + '"' + (i === S.day ? ' selected' : '') + '>第 ' + (i + 1) +
+                 ' 天 · ' + dp.m + '/' + dp.d + '</option>');
+  }
+  openSheet('新增行程',
+    '<div class="fld stack"><span class="lab">Google 地圖網址，或直接打名稱</span>' +
+    '<textarea class="inp" id="addSrc" style="min-height:76px;font-family:var(--mono);font-size:14px" ' +
+    'placeholder="https://maps.app.goo.gl/… 或 清水寺"></textarea></div>' +
+    '<div class="fld stack"><span class="lab">放到哪一天</span>' +
+    '<select class="inp" id="addDay">' + dayOpts.join('') + '</select></div>' +
+    '<button class="btn fill wide" id="addGo">抓取並新增</button>' +
+    '<button class="btn wide" id="addManual" style="margin-top:8px">不抓資料，手動建一張</button>' +
+    '<p class="hint">從 iPhone 的 Google 地圖 App 分享出來的短網址可以直接貼。' +
+    '抓回來的是名稱、地址、電話、座標、營業時間與評分。</p>',
+    () => {
+      $('#addGo').onclick = async () => {
+        const src = $('#addSrc').value.trim();
+        const day = parseInt($('#addDay').value, 10);
+        if (!src) return toast('先貼上網址或打名稱');
+        $('#addGo').disabled = true; $('#addGo').textContent = '抓取中…';
+        try {
+          const isUrl = /^https?:\/\//i.test(src) || /goo\.gl|google\.[a-z.]+\/maps/i.test(src);
+          const res = await gmap('resolve', isUrl ? { url:src } : { query:src });
+          const pl = res.place || {};
+          const c = await addCard(day, {
+            name: pl.name || src.slice(0, 40), stayMin: 60,
+            catId: guessCat(pl), place: pl,
+          });
+          closeSheet();
+          S.day = day; S.open = c.id; render();
+          if (day >= 0) { ensureLegs(day); loadWeather(day); }
+          toast(res.partial ? '只抓到座標，名稱請自己補' : '已加入：' + (pl.name || ''));
+        } catch (e) {
+          $('#addGo').disabled = false; $('#addGo').textContent = '抓取並新增';
+          toast(gmapMsg(e));
+        }
+      };
+      $('#addManual').onclick = async () => {
+        const day = parseInt($('#addDay').value, 10);
+        const c = await addCard(day, { name: $('#addSrc').value.trim() });
+        closeSheet(); S.day = day; S.open = c.id; render(); sheetEdit(c);
+      };
+    });
+}
+/* Google 給的 primaryTypeDisplayName 拿來猜類別；猜錯使用者一秒就能改。 */
+function guessCat(pl) {
+  const t = ((pl.type || '') + ' ' + (pl.name || ''));
+  if (/旅館|飯店|旅店|hotel|inn|ryokan|hostel|民宿/i.test(t)) return 'stay';
+  if (/餐廳|食堂|拉麵|咖啡|居酒屋|restaurant|cafe|bar|bakery|燒肉|壽司/i.test(t)) return 'food';
+  if (/神社|寺|城|遺跡|史蹟|temple|shrine|castle|museum|博物館|美術館/i.test(t)) return 'heritage';
+  if (/百貨|商店|市場|藥妝|outlet|store|shopping|市集/i.test(t)) return 'shop';
+  if (/公園|山|湖|瀑布|海岸|溫泉|park|mountain|lake|falls|onsen|garden|庭園/i.test(t)) return 'nature';
+  if (/樂園|水族館|體驗|動物園|aquarium|zoo|park.*amusement/i.test(t)) return 'play';
+  return '';
+}
+
+/* ═══ 編輯卡片 ═══════════════════════════════════════════════ */
+function sheetEdit(c) {
+  if (!c) return;
+  const d = c.data;
+  const cats = catsOf().map(x =>
+    '<button class="cat' + (d.catId === x.id ? ' on' : '') + '" data-cat="' + esc(x.id) + '">' +
+    mark(x.mark, 'sm') + esc(x.name) + '</button>').join('');
+  openSheet('編輯行程',
+    '<div class="fld stack"><span class="lab">名稱</span>' +
+    '<input class="inp" id="eName" value="' + esc(d.name) + '"></div>' +
+    '<div class="fld stack"><span class="lab">類別</span><div class="cats" id="eCats">' + cats +
+    '<button class="cat" data-cat="">無</button></div></div>' +
+    '<div class="row" style="gap:10px;margin-bottom:13px">' +
+      '<div style="flex:1"><span class="lab">停留（分鐘）</span>' +
+      '<input class="inp" id="eStay" type="number" min="0" max="1440" step="5" value="' +
+      (Number(d.stayMin) || 0) + '"></div>' +
+      '<div style="flex:1"><span class="lab">釘選時間</span>' +
+      '<input class="inp" id="ePin" type="time" value="' + esc(d.pinTime || '') + '"></div>' +
+    '</div>' +
+    '<div class="fld stack"><span class="lab">介紹</span>' +
+    '<textarea class="inp" id="eNote">' + esc(d.note || '') + '</textarea></div>' +
+    '<div class="fld stack"><span class="lab">網址連結（一行一個，可用「名稱 網址」）</span>' +
+    '<textarea class="inp" id="eLinks" style="min-height:70px;font-family:var(--mono);font-size:13px">' +
+    esc((d.links || []).map(l => (l.label && l.label !== l.url ? l.label + ' ' : '') + l.url).join('\n')) +
+    '</textarea></div>' +
+    '<div class="fld stack"><span class="lab">預定事項（一行一個）</span>' +
+    '<textarea class="inp" id="eTodos" style="min-height:70px;font-family:var(--mono);font-size:13px">' +
+    esc((d.todos || []).map(t => t.text).join('\n')) + '</textarea></div>' +
+    '<div class="fld stack"><span class="lab">圖片網址（一行一個）</span>' +
+    '<textarea class="inp" id="eImgs" style="min-height:56px;font-family:var(--mono);font-size:13px">' +
+    esc((d.images || []).join('\n')) + '</textarea></div>' +
+    '<div class="row" style="margin-bottom:14px">' +
+    '<button class="btn" id="eRefetch">重新抓 Google 資料</button>' +
+    (d.place ? '<button class="btn" id="eClearPlace">清除地點資料</button>' : '') + '</div>' +
+    '<button class="btn fill wide" id="eSave">儲存</button>',
+    () => {
+      let cat = d.catId;
+      $$('#eCats [data-cat]').forEach(n => n.onclick = () => {
+        cat = n.dataset.cat;
+        $$('#eCats .cat').forEach(x => x.classList.toggle('on', x.dataset.cat === cat));
+      });
+      $('#eRefetch').onclick = async () => {
+        const q = $('#eName').value.trim(); if (!q) return toast('先填名稱');
+        try {
+          const p = d.place || {};
+          const res = await gmap('resolve', { query:q, lat:p.lat, lng:p.lng });
+          d.place = res.place; await touch(c); toast('已更新地點資料'); closeSheet(); render();
+        } catch (e) { toast(gmapMsg(e)); }
+      };
+      const cp = $('#eClearPlace');
+      if (cp) cp.onclick = async () => { d.place = null; d.leg = null; await touch(c); closeSheet(); render(); };
+      $('#eSave').onclick = async () => {
+        d.name = $('#eName').value.trim();
+        d.catId = cat;
+        d.stayMin = clamp(parseInt($('#eStay').value, 10) || 0, 0, 1440);
+        d.pinTime = $('#ePin').value || '';
+        d.note = $('#eNote').value;
+        d.links = $('#eLinks').value.split('\n').map(s => s.trim()).filter(Boolean).map(s => {
+          const m = /^(.*?)\s+(https?:\/\/\S+)$/.exec(s);
+          return m ? { label:m[1], url:m[2] } : { label:s, url:s };
+        });
+        const old = d.todos || [];
+        d.todos = $('#eTodos').value.split('\n').map(s => s.trim()).filter(Boolean).map(text => {
+          const prev = old.find(t => t.text === text);
+          return { id: prev ? prev.id : uuid(), text, done: prev ? prev.done : false };
+        });
+        d.images = $('#eImgs').value.split('\n').map(s => s.trim()).filter(Boolean);
+        await touch(c); closeSheet();
+        if (S.day >= 0) ensureLegs(S.day);
+        render();
+      };
+    });
+}
+
+function sheetPin(c) {
+  openSheet('釘選時間',
+    '<p class="prose" style="margin-bottom:12px">釘選之後，這一站不會被前面的行程推走；' +
+    '到得早就等，到得晚會標紅並把落後量一路帶下去。</p>' +
+    '<div class="fld stack"><span class="lab">固定在幾點</span>' +
+    '<input class="inp" id="pinT" type="time" value="' + esc(c.data.pinTime || '') + '"></div>' +
+    '<button class="btn fill wide" id="pinGo">釘選</button>' +
+    (c.data.pinTime ? '<button class="btn wide" id="pinClr" style="margin-top:8px">取消釘選</button>' : ''),
+    () => {
+      $('#pinGo').onclick = async () => { c.data.pinTime = $('#pinT').value || ''; await touch(c); closeSheet(); render(); };
+      const x = $('#pinClr'); if (x) x.onclick = async () => { c.data.pinTime = ''; await touch(c); closeSheet(); render(); };
+    });
+}
+
+function sheetMove(c) {
+  let h = '<div class="cats" style="flex-direction:column;align-items:stretch;gap:0">';
+  h += '<button class="triprow" data-to="-1"><span class="tripswatch" style="background:' + POCKET_HUE + '"></span>' +
+       '<span class="tripname"><b>候選口袋</b></span></button>';
+  for (let i = 0; i < S.trip.days; i++) {
+    const dp = dateParts(dayDate(i));
+    h += '<button class="triprow" data-to="' + i + '">' +
+         '<span class="tripswatch" style="background:' + hueOf(i) + '"></span>' +
+         '<span class="tripname"><b>第 ' + (i + 1) + ' 天</b><span>' + dp.m + '/' + dp.d +
+         ' 週' + WEEK[dp.w] + ' · ' + dayCards(i).length + ' 個行程</span></span></button>';
+  }
+  h += '</div>';
+  openSheet('移到…', h, () => {
+    $$('[data-to]').forEach(n => n.onclick = async () => {
+      await moveCard(c, parseInt(n.dataset.to, 10), null);
+      closeSheet(); S.day = c.dayIndex; S.open = c.id; render();
+      if (S.day >= 0) ensureLegs(S.day);
+    });
+  });
+}
+
+function sheetLeg(c) {
+  const leg = c.data.leg || {};
+  const cur = leg.mode || S.trip.defaultMode || 'drive';
+  openSheet('這一段路程',
+    '<div class="fld stack"><span class="lab">交通方式</span><div class="cats" id="lgModes">' +
+    MODES.map(m => '<button class="cat' + (m.id === cur ? ' on' : '') + '" data-m="' + m.id + '">' +
+      mark(m.mark, 'sm') + m.name + '</button>').join('') + '</div></div>' +
+    '<div class="fld stack"><span class="lab">路程（分鐘）</span>' +
+    '<input class="inp" id="lgMin" type="number" min="0" max="1440" value="' +
+    (leg.min == null ? '' : leg.min) + '" placeholder="留白＝讓 Google 算"></div>' +
+    '<button class="btn fill wide" id="lgCalc">用 Google 重新計算</button>' +
+    '<button class="btn wide" id="lgSave" style="margin-top:8px">用我填的數字</button>',
+    () => {
+      let m = cur;
+      $$('#lgModes [data-m]').forEach(n => n.onclick = () => {
+        m = n.dataset.m;
+        $$('#lgModes .cat').forEach(x => x.classList.toggle('on', x.dataset.m === m));
+      });
+      $('#lgCalc').onclick = async () => {
+        c.data.leg = { mode:m }; await touch(c); closeSheet();
+        await ensureLegs(S.day, true); render();
+      };
+      $('#lgSave').onclick = async () => {
+        const v = parseInt($('#lgMin').value, 10);
+        c.data.leg = { mode:m, min: isFinite(v) ? v : null, meters: leg.meters, sig:'manual' };
+        await touch(c); closeSheet(); render();
+      };
+    });
+}
+
+function sheetDayStart() {
+  openSheet('第 ' + (S.day + 1) + ' 天的出發時間',
+    '<p class="prose" style="margin-bottom:12px">這一天從幾點開始動。後面每一站的到達時刻，' +
+    '都是從這裡加上「停留＋路程」推出來的。</p>' +
+    '<div class="fld stack"><span class="lab">出發</span>' +
+    '<input class="inp" id="dsT" type="time" value="' + dayStart(S.day) + '"></div>' +
+    '<button class="btn fill wide" id="dsGo">套用這一天</button>' +
+    '<button class="btn wide" id="dsAll" style="margin-top:8px">套用到所有天</button>',
+    () => {
+      $('#dsGo').onclick = async () => {
+        S.trip.dayStarts = S.trip.dayStarts || {};
+        S.trip.dayStarts[S.day] = $('#dsT').value || '08:30';
+        await touchMeta(); closeSheet(); render();
+      };
+      $('#dsAll').onclick = async () => {
+        S.trip.defaultStart = $('#dsT').value || '08:30';
+        S.trip.dayStarts = {};
+        await touchMeta(); closeSheet(); render();
+      };
+    });
+}
+
+async function dupToNextDay(c) {
+  const to = c.dayIndex + 1;
+  if (to >= S.trip.days) return toast('已經是最後一天了');
+  const list = dayCards(to);
+  const copy = await addCard(to, JSON.parse(JSON.stringify(
+    Object.assign({}, c.data, { leg:null, todos:(c.data.todos||[]).map(t => ({ ...t, done:false })) }))));
+  /* 住宿是隔天的起點，所以插到最前面，不是接在後面。 */
+  copy.orderKey = keyBetween('', list.length ? list[0].orderKey : '');
+  await touch(copy);
+  toast('已複製到第 ' + (to + 1) + ' 天的開頭');
+  S.day = to; S.open = copy.id; render(); ensureLegs(to);
+}
+</script>
+
+<script>
+'use strict';
+/* ═══ 旅程設定 ═══════════════════════════════════════════════ */
+function sheetTrip() {
+  const t = S.trip;
+  const cats = catsOf();
+  openSheet('旅程設定',
+    '<div class="fld stack"><span class="lab">名稱</span>' +
+    '<input class="inp" id="tName" value="' + esc(t.name) + '"></div>' +
+    '<div class="row" style="gap:10px;margin-bottom:13px">' +
+      '<div style="flex:1"><span class="lab">出發日</span>' +
+      '<input class="inp" id="tStart" type="date" value="' + esc(t.startDate) + '"></div>' +
+      '<div style="flex:0 0 92px"><span class="lab">天數</span>' +
+      '<input class="inp" id="tDays" type="number" min="1" max="60" value="' + (t.days || 1) + '"></div>' +
+    '</div>' +
+    '<div class="fld stack"><span class="lab">預設交通方式</span><div class="cats" id="tModes">' +
+    MODES.map(m => '<button class="cat' + (m.id === (t.defaultMode||'drive') ? ' on' : '') +
+      '" data-m="' + m.id + '">' + mark(m.mark,'sm') + m.name + '</button>').join('') + '</div></div>' +
+    '<label class="row" style="margin-bottom:14px"><input type="checkbox" id="tAuto"' +
+    (t.autoRoute !== false ? ' checked' : '') + '> <span style="font-size:15px">自動用 Google 算路程</span></label>' +
+    '<div class="fld stack"><span class="lab">你的暱稱</span>' +
+    '<input class="inp" id="tNick" value="' + esc(t.nick || '') + '" maxlength="12"></div>' +
+
+    '<div class="fld stack"><span class="lab">類別</span><div id="tCats">' +
+    cats.map(c => '<div class="todo" data-cat="' + esc(c.id) + '">' + mark(c.mark) +
+      '<span class="t">' + esc(c.name) + '</span>' +
+      (DEFAULT_CATS.some(x => x.id === c.id) ? '<span class="lab">預設</span>' :
+       '<button class="btn" data-delcat="' + esc(c.id) + '" style="min-height:26px;padding:2px 8px">刪</button>') +
+      '</div>').join('') + '</div>' +
+    '<div class="row" style="margin-top:9px">' +
+    '<input class="inp" id="tNewCat" placeholder="新類別名稱" style="flex:1 1 120px">' +
+    '<select class="inp" id="tNewMark" style="flex:0 0 108px">' +
+    MARKS.map(m => '<option value="' + m + '">' + m + '</option>').join('') + '</select>' +
+    '<button class="btn" id="tAddCat">加</button></div></div>' +
+
+    '<div class="panel" style="margin:16px 0 0;box-shadow:none;background:transparent;' +
+    'border-color:var(--rule)"><h3>分享給旅伴</h3>' +
+    '<p class="prose" style="font-size:16px">把下面這組代碼與你設的密碼給他們，' +
+    '在自己手機上打開同一個網址、輸入就能一起編輯。</p>' +
+    '<div class="row" style="margin-top:10px">' +
+    '<code style="font-family:var(--mono);font-size:22px;letter-spacing:.16em;font-weight:700">' +
+    esc(t.code) + '</code>' +
+    '<button class="btn" id="tCopy">複製代碼</button></div>' +
+    '<p class="hint">密碼不會顯示在這裡——它是解密金鑰，我們沒有存明文。</p></div>' +
+
+    '<button class="btn fill wide" id="tSave" style="margin-top:16px">儲存</button>' +
+    '<button class="btn wide" id="tForget" style="margin-top:8px;color:var(--vermilion);' +
+    'border-color:var(--vermilion)">從這台裝置移除</button>' +
+    '<p class="hint">移除只影響這支手機，雲端與其他人的資料不動；' +
+    '之後用代碼與密碼還能再加入。</p>',
+    () => {
+      let m = t.defaultMode || 'drive';
+      $$('#tModes [data-m]').forEach(n => n.onclick = () => {
+        m = n.dataset.m;
+        $$('#tModes .cat').forEach(x => x.classList.toggle('on', x.dataset.m === m));
+      });
+      $$('[data-delcat]').forEach(n => n.onclick = async () => {
+        t.cats = catsOf().filter(c => c.id !== n.dataset.delcat);
+        await touchMeta(); closeSheet(); sheetTrip();
+      });
+      $('#tAddCat').onclick = async () => {
+        const name = $('#tNewCat').value.trim(); if (!name) return;
+        t.cats = catsOf().concat([{ id:'c' + Date.now().toString(36), name, mark:$('#tNewMark').value }]);
+        await touchMeta(); closeSheet(); sheetTrip();
+      };
+      $('#tCopy').onclick = () => {
+        navigator.clipboard.writeText(t.code).then(() => toast('代碼已複製'), () => toast('複製失敗'));
+      };
+      $('#tSave').onclick = async () => {
+        t.name = $('#tName').value.trim() || '未命名旅程';
+        t.startDate = $('#tStart').value || t.startDate;
+        t.days = clamp(parseInt($('#tDays').value, 10) || 1, 1, 60);
+        t.defaultMode = m;
+        t.autoRoute = $('#tAuto').checked;
+        const nick = $('#tNick').value.trim();
+        if (nick) { t.nick = nick; await kvSet('nick', nick); }
+        if (S.day >= t.days) S.day = t.days - 1;
+        await touchMeta(); closeSheet(); render();
+      };
+      $('#tForget').onclick = async () => {
+        if (!confirm('把「' + t.name + '」從這台裝置移除？雲端資料不會刪除。')) return;
+        for (const c of S.cards) await dbDel('cards', c.id);
+        await dbDel('trips', t.code);
+        closeSheet(); leaveTrip();
+      };
+    });
+}
+
+/* ═══ 上路模式 ═══════════════════════════════════════════════ */
+function openRoad() {
+  const ti = todayIndex();
+  if (ti >= 0) S.day = ti;
+  else if (S.day < 0) S.day = 0;
+  $('#road').classList.add('on');
+  render();
+}
+function renderRoad() {
+  const d = S.day < 0 ? 0 : S.day;
+  const sched = computeSchedule(d);
+  const ti = todayIndex();
+  const isToday = d === ti;
+  const n = nowMin();
+  let i = isToday ? sched.findIndex(r => r.depart > n) : 0;
+  if (!sched.length) i = -1;
+  const dp = dateParts(dayDate(d));
+  $('#roadDay').textContent = '第 ' + (d + 1) + ' 天 · ' + dp.m + '/' + dp.d + ' 週' + WEEK[dp.w] +
+    (isToday ? ' · 今天' : '');
+
+  const card = $('#roadCard');
+  if (i < 0) {
+    card.innerHTML = '<div class="roadname">' + (sched.length ? '今天走完了。' : '這一天還沒有行程。') +
+      '</div><div class="roadsub">' + (sched.length ? '辛苦了。' : '回行程表加幾個地方。') + '</div>';
+  } else {
+    const r = sched[i], c = r.card, p = c.data.place || {};
+    const cat = catBy(c.data.catId);
+    const nx = sched[i + 1];
+    const leg = c.data.leg || {};
+    const arriving = isToday && r.arrive > n;
+    card.innerHTML =
+      '<div class="roadeta"><span class="lab">' + (arriving ? '預計抵達' : '現在在') + '</span>' +
+        '<span class="big">' + min2hm(r.arrive) + '</span>' +
+        (arriving ? '<span class="lab">還有 ' + durTxt(r.arrive - n) + '</span>'
+                  : '<span class="lab">停到 ' + min2hm(r.depart) + '</span>') + '</div>' +
+      '<div class="roadname">' + esc(c.data.name || '未命名') + '</div>' +
+      '<div class="roadsub">' +
+        (cat ? cat.name + ' · ' : '') + '停留 ' + durTxt(c.data.stayMin) +
+        (r.hours && !r.hours.unknown ? (r.hours.open ? ' · 有開' : ' · 到時沒開') : '') +
+        (p.address ? '<br>' + esc(p.address) : '') +
+      '</div>' +
+      '<div class="row" style="margin-top:14px">' +
+        '<a class="btn fill" href="' + gmPlace(c) + '" target="_blank" rel="noopener" ' +
+        'style="min-height:46px;flex:1">導航到這裡 ↗</a></div>' +
+      (nx
+        ? '<div class="roadnext">下一站 ' + esc(nx.card.data.name) + '<br>' +
+            (leg.min != null ? modeBy(leg.mode || S.trip.defaultMode).name + ' ' + leg.min + ' 分 · ' : '') +
+            min2hm(nx.arrive) + ' 到　' +
+            '<a href="' + gmDir(c, nx.card, leg.mode || S.trip.defaultMode) + '" target="_blank" ' +
+            'rel="noopener">看這段路線 ↗</a></div>'
+        : '<div class="roadnext">這是今天最後一站。</div>') +
+      (sched.length > i + 1
+        ? '<div class="roadrest"><div class="lab" style="margin-bottom:2px">今天剩下的</div>' +
+          sched.slice(i + 1).map(x =>
+            '<div class="restrow' + (x.late > 0 ? ' late' : '') + '">' +
+              '<span class="t">' + min2hm(x.arrive) + '</span>' +
+              '<span class="n">' + esc(x.card.data.name || '未命名') + '</span>' +
+              '<span class="g">停 ' + durMin(x.card.data.stayMin) + '</span>' +
+            '</div>').join('') +
+          '</div>'
+        : '');
+  }
+  $('#roadStrip').innerHTML = sched.map((r, k) =>
+    '<i class="' + (k === i ? 'on' : (k < i ? 'past' : '')) + '"></i>').join('');
+}
+
+/* ═══ 啟動 ═══════════════════════════════════════════════════ */
+async function boot() {
+  applyBoard(HUES[3]);
+  await openDB();
+  await renderGate();
+
+  $('#btnAdd').onclick = sheetAdd;
+  $('#btnRoad').onclick = openRoad;
+  $('#roadClose').onclick = () => { $('#road').classList.remove('on'); render(); };
+  $('#sheetClose').onclick = closeSheet;
+  $('#sheetScrim').onclick = closeSheet;
+  $('#syncBtn').onclick = () => syncNow();
+
+  addEventListener('online',  () => { S.online = true;  renderSync(); syncNow(true); });
+  addEventListener('offline', () => { S.online = false; renderSync(); });
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && S.trip) { syncNow(true); render(); }
+  });
+
+  if ('serviceWorker' in navigator)
+    addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
+}
+boot();
+</script>
+</body>
+</html>
