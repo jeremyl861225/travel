@@ -320,6 +320,8 @@ textarea.inp{font-family:var(--serif);font-size:15px;line-height:1.65;letter-spa
 /* 卡片展開後的內文（宋體，一個尺寸做完） */
 .detail{border-top:1px solid var(--accent-rule);padding:0 12px 12px}
 .detail .blk{display:grid;grid-template-columns:62px 1fr;gap:0;padding-top:12px}
+/* 介紹與動作不掛標籤，段落直接鋪滿 */
+.detail .blk.full{grid-template-columns:1fr}
 .detail .blk > .lab{padding-right:10px;text-align:right;padding-top:4px;color:inherit;opacity:.62}
 .detail .blk > div{min-width:0}
 /* 卡片變成當日色底之後，卡上的按鈕不能再用紙色那套邊框 */
@@ -1415,7 +1417,7 @@ function detailHTML(c, r) {
   const d = c.data, p = d.place || {};
   let h = '<div class="detail">';
   if (d.note)
-    h += '<div class="blk"><span class="lab">介紹</span><div class="prose">' +
+    h += '<div class="blk full"><div class="prose">' +
          esc(d.note).replace(/\n/g, '<br>') + '</div></div>';
   if (p.hoursText && p.hoursText.length) {
     const w = dateParts(dayDate(c.dayIndex)).w;
@@ -1455,7 +1457,7 @@ function detailHTML(c, r) {
       d.images.map(u => '<img src="' + esc(u) + '" alt="" loading="lazy">').join('') + '</div></div>';
   }
   const isStay = d.catId === 'stay' || (catBy(d.catId) && catBy(d.catId).mark === 'stay');
-  h += '<div class="blk"><span class="lab">動作</span><div class="row">' +
+  h += '<div class="blk full"><div class="row">' +
     '<button class="btn" data-edit="' + c.id + '">編輯</button>' +
     '<a class="btn" href="' + gmPlace(c) + '" target="_blank" rel="noopener">' + mark('pin','sm') + ' 地圖</a>' +
     (!(d.place && d.place.placeId) && gmCoords(c)
