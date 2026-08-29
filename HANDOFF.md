@@ -281,8 +281,14 @@ Google 的景點照片要另外計費；維基是免費、免 key、CORS 開放�
 3. **新增改成打字跳候選**（Places Autocomplete，整段共用一個 sessionToken）。
 4. **口袋長出「找附近」**（Nearby Search）。刻意不自動搜——那是 Enterprise 級。
 5. **日首顯示公休與撲空總覽**。
-6. **Google 排程器**（Route Optimization）程式寫完了，**卡在認證**：
-   那支不收 API key，要服務帳戶。步驟在 `docs/GOOGLE-MAPS-SETUP.md` 第八節。
+6. **Google 排程器**（Route Optimization）程式寫完了，**認證刻意先不做**：
+   那支不收 API key，要服務帳戶（步驟在 `docs/GOOGLE-MAPS-SETUP.md` 第八節）。
+   **使用者 2026-08-30 決定：先記著，之後再用。不要再主動催。**
+   前端按下去會回 `NO_SA_KEY` 並說明缺什麼，本地解算器照常運作，
+   所以這不是待辦、不是缺陷，是一個已經做好、等他哪天想開就開的開關。
+   判斷依據：它跟本地解算器唯一的差別是「連釘選時間的卡也能被搬動」，
+   而這趟旅程目前一個釘選都沒有——真正用得到是行程排滿、
+   餐廳訂位與預約制景點打架的時候。
 
 另外：開車路程改成帶出發時刻（`TRAFFIC_AWARE`），時區用地點自己的
 `utcOffsetMinutes`（手機在台灣是 +8、日本 +9，用手機時區會整整差一小時）。
