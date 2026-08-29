@@ -98,3 +98,50 @@ App 打的是我們自己的 `gmap` 函式，函式在伺服器端才帶著 key 
 
 把 Supabase 的 `GOOGLE_MAPS_API_KEY` 這個 secret 刪掉就好。
 App 會自動退回手動模式，已經抓過的資料都還在，不會消失。
+
+---
+
+## 八、Route Optimization（選用，要另外一組金鑰）
+
+「排順路」有兩個解算器：
+
+- **本地解算器**（預設，只要有上面那把 API key 就能用）。拿 Routes API 的
+  真實車程矩陣，把營業時間當成約束在搜尋，釘選時間的卡固定在原位。
+- **Google 排程器**（Route Optimization API）。差別只有一個：**釘選的卡也能被搬動**——
+  它把釘選當成「壓成一個點的時間窗」，會去找一個讓所有時間窗同時成立的順序。
+
+Route Optimization API **不收 API key**，只收 OAuth（scope `cloud-platform`
+＋ IAM 權限 `routeoptimization.locations.use`）。所以要多一組服務帳戶金鑰。
+不設也完全沒關係，那顆按鈕會告訴你缺什麼，本地解算器照用。
+
+### 要做的事
+
+1. Google Cloud Console → 啟用 **Route Optimization API**（你已經開了）。
+2. IAM 與管理 → 服務帳戶 → **建立服務帳戶**，名字隨便（例如 `travel-optimizer`）。
+3. 給它角色 **Route Optimization Editor**（`roles/routeoptimization.editor`）。
+   只給這一個，不要給 Editor 或 Owner。
+4. 進去那個服務帳戶 → 金鑰 → **新增金鑰 → JSON** → 下載。
+5. Supabase → 專案 → Edge Functions → Secrets → 新增
+   `GOOGLE_SA_KEY`，值是**那個 JSON 檔的全文**（整個貼進去，含大括號）。
+
+### 這把金鑰跟前面那把不一樣，要更小心
+
+API key 外流的損失是「有人幫你刷額度」。服務帳戶的私鑰外流是「有人拿到一個
+Google Cloud 身分」——就算只綁了 Route Optimization Editor，那也是你的專案裡
+一個真的帳號。所以：
+
+- 別把 JSON 貼進任何聊天視窗、issue、或 commit。
+- 它只存在 Supabase 的 secret 裡，跟 API key 一樣不會進前端。
+- 不用了就到服務帳戶頁面把那把金鑰**刪掉**（不是停用專案）。
+
+### 驗收
+
+編輯模式 →「排順路」→ 最下面「改用 Google 排程器」。
+成功會列出它算出來的順序；失敗的訊息都寫得很明白：
+
+| 訊息 | 意思 |
+|---|---|
+| 這一支不吃 API key… | `GOOGLE_SA_KEY` 還沒設 |
+| 第一站或最後一站沒有座標 | 解算器需要起訖點，先把那兩張卡的地點抓好 |
+| 這一天已經過了 | Route Optimization 不收過去的出發時間 |
+| 找不到可行解 | 通常是某一站的營業時間跟釘選時間互相打架 |

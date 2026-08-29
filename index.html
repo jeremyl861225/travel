@@ -73,14 +73,10 @@
   --step:90ms;              /* 唯一的動作長度 */
   --rail:44px;              /* 書口分頁鐵 */
   --bind:10px;              /* 左緣留白 */
-  --dock:52px;
+  --dock:46px;
   /* 瀏覽器裡的底部工具列本來就蓋住 home indicator，再墊一次 safe-area
      就會在頁底留下一條空白。只有加到主畫面的獨立模式才需要墊。 */
   --sab:0px;
-  /* 視窗比螢幕短時的差額，由 JS 實測寫進來（只在獨立模式，且上限 80px）。
-     不拿它去移動按鈕，只讓操作列的底色往下多鋪這一段，
-     把頁底那條「紙色的空白」蓋掉。量不到就是 0，什麼都不會變。 */
-  --gap:0px;
 }
 @media (display-mode: standalone), (display-mode: fullscreen){
   :root{ --sab:env(safe-area-inset-bottom); }
@@ -142,6 +138,10 @@ a{color:inherit}
 }
 .tab .td{font-family:var(--mono);font-size:9.5px;font-weight:500;opacity:.76;letter-spacing:.03em}
 .tab.cjk{letter-spacing:.14em;font-size:12.5px}
+/* 褪色的分頁：白字壓在極淺灰上對比只有 1.9:1，是刻意的——
+   它要讀得出來但不能跟當天搶。內縮的暗邊維持形狀，不然會整片糊掉。 */
+.tab.past{box-shadow:inset 1px 0 0 rgba(0,0,0,.10)}
+.tab.past .td{opacity:.9}
 /* 當日分頁向左延伸，與板面接成同一塊 */
 .tab.on{margin-left:0;border-radius:0;box-shadow:none;font-weight:600;font-size:13.5px}
 .tab.on .td{opacity:.9}
@@ -325,6 +325,15 @@ input[type=number].inp{ -moz-appearance:textfield; }
   box-shadow:inset 0 0 0 1px var(--accent-line)}
 textarea.inp{font-family:var(--serif);font-size:15px;line-height:1.65;letter-spacing:0;min-height:120px;resize:vertical}
 .hint{font-family:var(--mono);font-size:10px;color:var(--ink3);line-height:1.55;margin-top:5px}
+/* 打字搜尋的候選。整塊是 button，命中區才夠大；手機上點小字很痛苦。 */
+.aclist{margin-top:6px;border:1px solid var(--rule);border-radius:var(--r2);overflow:hidden}
+.acitem{display:block;width:100%;text-align:left;padding:9px 11px;background:none;border:none;
+  border-bottom:1px solid var(--rule2)}
+.acitem:last-child{border-bottom:none}
+.acitem:active{background:var(--ink);color:var(--leaf)}
+.acmain{font-family:var(--serif);font-size:14.5px;line-height:1.3}
+.acsub{font-family:var(--mono);font-size:10.5px;opacity:.7;margin-top:2px;line-height:1.35}
+.acbusy{font-family:var(--mono);font-size:10.5px;color:var(--ink3);padding:8px 2px}
 .leaf .hint,.leaf .lab{color:inherit;opacity:.75}
 
 /* ── 底部操作列（拇指可及） ─────────────────────────────── */
@@ -332,9 +341,11 @@ textarea.inp{font-family:var(--serif);font-size:15px;line-height:1.65;letter-spa
   /* home indicator 的高度不能當成「墊在按鈕下面的內距」——那會讓按鈕
      黏在操作列上緣，下面留一條與上緣不對稱的空白，看起來就是頁尾破了個洞。
      改成把 safe-area 算進整條的高度、內容垂直置中，空白就上下均分。 */
-  position:absolute;left:0;right:var(--rail);bottom:calc(-1 * var(--gap));z-index:20;
-  height:calc(var(--dock) + var(--sab) + var(--gap));
-  padding:0 12px var(--gap) var(--bind);
+  position:absolute;left:0;right:var(--rail);bottom:0;z-index:20;
+  height:calc(var(--dock) + var(--sab));
+  /* home indicator 只需要大約 20pt 的淨空，不必把整段 safe-area 都讓出來。
+     讓出全部的話按鈕會停在半空中，底下那條空白比操作列本身還顯眼。 */
+  padding:0 12px calc(var(--sab) * .34) var(--bind);
   display:flex;align-items:center;gap:8px;
   background:var(--leaf);border-top:1px solid var(--rule2);
   border-radius:0;border-top:1px solid var(--rule1);
@@ -345,7 +356,7 @@ textarea.inp{font-family:var(--serif);font-size:15px;line-height:1.65;letter-spa
 .sync.err{color:var(--vermilion)}
 
 /* ── 抽頁（sheet）：以打孔邊為軸的兩格步進，不淡入 ────────── */
-.sheetwrap{position:fixed;left:0;right:0;top:0;height:calc(var(--vh, 100dvh) + var(--gap));z-index:60;display:none}
+.sheetwrap{position:fixed;left:0;right:0;top:0;height:var(--vh, 100dvh);z-index:60;display:none}
 .sheetwrap.open{display:block}
 .scrim{position:absolute;inset:0;background:rgba(0,0,0,.42)}
 .sheet{
@@ -536,8 +547,10 @@ const HUES = [
 /* 建置代號。手機上「改了但看起來沒變」十之八九是舊快取，
    在設定裡把這個字串印出來，一眼就知道手上這份是不是新的。
    改版時跟著 sw.js 的 CACHE 一起跳號。 */
-const BUILD = '2026-08-29 · v8';
+const BUILD = '2026-08-29 · v9';
 const VERMILION = '#D62D14';
+/* 已經過去的分頁用的極淺灰。比紙略深一點點，形狀還在但退到背景去。 */
+const PAST_TAB = '#D9D6CE';
 const MARKS = ['nature','heritage','shop','play','food','stay','transit','view','hot','pin'];
 const DEFAULT_CATS = [
   { id:'nature',   name:'自然', mark:'nature' },
@@ -856,6 +869,14 @@ function computeSchedule(d) {
 }
 
 /* Google 的 periods 以星期日為 0，跨夜的時段 close.day 會落在隔天。 */
+/* 這一天整天沒開。Google 的 periods 只列出有營業的區段，
+   某個 day 完全不出現就是那天公休；24 小時營業的店 periods 只有一筆
+   而且沒有 close，那種要視為每天都開。 */
+function closedAllDay(periods, weekday) {
+  if (!periods || !periods.length) return false;
+  if (periods.length === 1 && !periods[0].close) return false;   // 24 小時
+  return !periods.some(p => p.open && p.open.day === weekday);
+}
 function isOpenAt(periods, weekday, minutes) {
   if (!periods || !periods.length) return { unknown:true, open:false };
   const off = Math.floor(minutes / 1440);
@@ -1474,8 +1495,14 @@ function renderRail() {
   for (let i = 0; i < days; i++) {
     const n = dayCards(i).length;
     const dp = dateParts(dayDate(i));
-    h += '<button class="tab' + (S.day === i ? ' on' : '') + '" data-day="' + i + '" ' +
-         'style="background:' + hueOf(i) + ';color:' + inkOn(hueOf(i)) +
+    /* 已經翻過去的日子（在目前這一天之前）褪成極淺灰配白字。
+       分頁鐵上一次只有一個「現在」，前面的是翻過的紙，
+       維持原色會讓整條鐵尺看起來全部一樣重要。 */
+    const past = S.day >= 0 && i < S.day;
+    const bg = past ? PAST_TAB : hueOf(i);
+    h += '<button class="tab' + (S.day === i ? ' on' : '') + (past ? ' past' : '') +
+         '" data-day="' + i + '" ' +
+         'style="background:' + bg + ';color:' + (past ? '#fff' : inkOn(hueOf(i))) +
          '" aria-label="第 ' + (i + 1) + ' 天">Day ' + (i + 1) +
          '<span class="td">' + dp.m + '/' + dp.d + '</span></button>';
   }
@@ -1629,6 +1656,20 @@ function renderPlate() {
       '<div class="headbody">' +
         '<div class="ddate">' + dp.m + ' 月 ' + dp.d + ' 日<span style="font-size:15px;color:var(--ink2)"> 週' + WEEK[dp.w] + '</span></div>' +
         (w ? '<div class="dsub">' + (WCODE[w.code] || '') + ' ' + w.tmin + '–' + w.tmax + '°C</div>' : '') +
+        /* 公休與撲空要在日首就看得到。點進每一張卡才發現「今天週一休館」
+           已經太晚了——那是要換天的決定，不是換時間的決定。 */
+        (() => {
+          const shut = sched.filter(x => x.hours && x.hours.unknown === false && !x.hours.open).length;
+          const off = list.filter(c => {
+            const per = c.data.place && c.data.place.hoursPeriods;
+            return per && closedAllDay(per, dp.w);
+          }).length;
+          if (!shut && !off) return '';
+          const bits = [];
+          if (off) bits.push(off + ' 站今天公休');
+          if (shut) bits.push(shut + ' 站到的時候沒開');
+          return '<div class="dsub" style="color:var(--vermilion)">' + bits.join('　') + '</div>';
+        })() +
         (firstPin ? '<div class="dsub" style="color:' + (firstPin.pinDrift > 0 ? 'var(--vermilion)' : 'var(--ink)') + '">' +
           '距 ' + min2hm(firstPin.pinTarget) + ' ' + esc(firstPin.pinName) + '：' +
           (firstPin.pinDrift > 0 ? '已慢 ' + durTxt(firstPin.pinDrift) : '尚有餘裕 ' + durTxt(-firstPin.pinDrift)) +
@@ -1650,6 +1691,7 @@ function renderPlate() {
       '<div class="ddate">候選口袋</div>' +
       '<div class="dsub">想去但還沒排進哪一天的地方。按住左邊的時刻欄可以拖動順序，' +
       '要換到某一天用卡片裡的「移到…」。</div>' +
+      '<div class="startrow"><button class="btn fill" id="btnNear">找附近</button></div>' +
       '</div></div></div>';
   }
 
@@ -1751,33 +1793,129 @@ function haversine(a, b) {
             Math.cos(rad(a[0])) * Math.cos(rad(b[0])) * Math.sin(dLng/2) ** 2;
   return 2 * R * Math.asin(Math.sqrt(h));
 }
-function pathLen(order, pt) {
-  let t = 0;
-  for (let i = 1; i < order.length; i++) {
-    const a = pt[order[i-1]], b = pt[order[i]];
-    if (a && b) t += haversine(a, b);
+/* 兩兩之間的真實車程。一次 computeRouteMatrix 就換回整張 N×N，
+   比逐段打 computeRoutes 便宜。拿不到（沒 key、超過 14 站、走不通）就回 null，
+   呼叫端會退回直線估算，而不是假裝有資料。 */
+const MATRIX_TTL = 6 * 3600000;
+async function dayMatrix(d, list) {
+  const idx = [], pts = [];
+  list.forEach((c, i) => {
+    const p = c.data.place;
+    if (p && p.lat != null && p.lng != null) { idx.push(i); pts.push({ lat: p.lat, lng: p.lng }); }
+  });
+  if (pts.length < 2 || pts.length > 14) return null;
+  const mode = (S.trip && S.trip.defaultMode) || 'drive';
+  const sig = pts.map(p => p.lat.toFixed(4) + ',' + p.lng.toFixed(4)).join(';') + '|' + mode;
+  const hit = S.matrix && S.matrix[d];
+  if (hit && hit.sig === sig && Date.now() - hit.at < MATRIX_TTL) return hit;
+  try {
+    const departAt = departISO(d, hm2min(dayStart(d)), list[idx[0]] && list[idx[0]].data.place);
+    const m = await gmap('matrix', { points: pts, mode, departAt: departAt || undefined });
+    /* 矩陣是以「有座標的那幾張」為序的，要換回 list 的索引，
+       否則沒有座標的卡一插進來，所有格子就對錯人了。 */
+    const pos = {}; idx.forEach((li, k) => { pos[li] = k; });
+    const out = { sig, at: Date.now(), pos, seconds: m.seconds, meters: m.meters };
+    S.matrix = S.matrix || {}; S.matrix[d] = out;
+    return out;
+  } catch (e) {
+    return null;
   }
-  return t;
 }
-/* 2-opt：反覆把交叉的兩段路對調，直到沒有改善。頭尾是錨點，不參與交換。 */
-function twoOpt(order, pt) {
-  let best = order.slice(), improved = true, guard = 0;
-  while (improved && guard++ < 60) {
+
+/* 成本＝分鐘。有真實矩陣就用，沒有就用校準過的直線模型。
+   單位統一成分鐘，因為營業時間是用分鐘在比的。 */
+function makeCost(list, pt, mx) {
+  return (i, j) => {
+    if (mx && mx.pos[i] != null && mx.pos[j] != null) {
+      const v = mx.seconds[mx.pos[i]][mx.pos[j]];
+      if (v != null) return v / 60;
+    }
+    const a = pt[i], b = pt[j];
+    if (!a || !b) return 0;
+    const mode = (list[i].data.leg && list[i].data.leg.mode) || (S.trip && S.trip.defaultMode) || 'drive';
+    const m = LEG_MODEL[mode] || LEG_MODEL.drive;
+    return m.overhead + haversine(a, b) * m.detour / 1000 / m.kmh * 60;
+  };
+}
+function makeDist(list, pt, mx) {
+  return (i, j) => {
+    if (mx && mx.pos[i] != null && mx.pos[j] != null) {
+      const v = mx.meters[mx.pos[i]][mx.pos[j]];
+      if (v != null) return v;
+    }
+    const a = pt[i], b = pt[j];
+    if (!a || !b) return 0;
+    const mode = (list[i].data.leg && list[i].data.leg.mode) || (S.trip && S.trip.defaultMode) || 'drive';
+    return haversine(a, b) * ((LEG_MODEL[mode] || LEG_MODEL.drive).detour);
+  };
+}
+
+/* 給一個順序打分。這是整個排順路的核心：
+   不是只算路程，而是把時刻推一遍，看有幾站到的時候沒開門。
+   營業時間因此是「約束」而不是「排完再檢查」——順序在被選中之前
+   就已經因為撲空而被淘汰了。
+   排序準則：撲空站數 → 收工時間 → 純移動時間。
+   用收工時間而不是移動時間當第二順位，是因為「為了等開門而枯等」
+   跟「多開二十分鐘」對旅人的代價是一樣的，都要算進去。 */
+function scoreOrder(list, order, d, cost) {
+  const dp = dateParts(dayDate(d));
+  let t = hm2min(dayStart(d)); if (t == null) t = 540;
+  let travel = 0, shut = 0, wait = 0, end = t;
+  for (let k = 0; k < order.length; k++) {
+    const c = list[order[k]];
+    const pin = hm2min(c.data.pinTime);
+    const arrive = (pin != null && pin >= t) ? pin : t;
+    wait += arrive - t;
+    const per = c.data.place && c.data.place.hoursPeriods;
+    if (per) { const o = isOpenAt(per, dp.w, arrive); if (!o.unknown && !o.open) shut++; }
+    const depart = arrive + (Number(c.data.stayMin) || 0);
+    end = depart;
+    if (k < order.length - 1) {
+      const leg = cost(order[k], order[k + 1]);
+      travel += leg;
+      t = depart + leg;
+    }
+  }
+  return { shut, end, travel, wait };
+}
+const scoreBetter = (a, b) =>
+  a.shut !== b.shut ? a.shut < b.shut :
+  Math.round(a.end) !== Math.round(b.end) ? a.end < b.end :
+  a.travel < b.travel - 0.2;
+
+/* 局部搜尋：對調兩張自由卡、或把一張抽出來插到另一個自由位置，
+   只要分數變好就採用。錨點的「位置」永遠不變，所以第一站、最後一站、
+   釘選卡、沒座標的卡都待在原地。
+   n 最多十幾，每輪 O(n²) 次評分、每次評分 O(n)，跑滿也是幾千次運算，
+   在手機上是瞬間的事——不需要 2-opt 那種只看幾何的近似。 */
+function searchOrder(list, before, anchor, d, cost) {
+  const freePos = before.filter(i => !anchor[i]);
+  if (freePos.length < 2) return before.slice();
+  let cur = before.slice(), best = scoreOrder(list, cur, d, cost);
+  let improved = true, guard = 0;
+  const apply = (items) => {
+    const t = cur.slice();
+    freePos.forEach((p, i) => { t[p] = items[i]; });
+    return t;
+  };
+  while (improved && guard++ < 40) {
     improved = false;
-    for (let i = 1; i < best.length - 2; i++) {
-      for (let k = i + 1; k < best.length - 1; k++) {
-        const a = pt[best[i-1]], b = pt[best[i]], c = pt[best[k]], e = pt[best[k+1]];
-        if (!a || !b || !c || !e) continue;
-        if (haversine(a,b) + haversine(c,e) > haversine(a,c) + haversine(b,e) + 0.5) {
-          best = best.slice(0, i).concat(best.slice(i, k+1).reverse(), best.slice(k+1));
-          improved = true;
-        }
+    for (let x = 0; x < freePos.length; x++) {
+      for (let y = x + 1; y < freePos.length; y++) {
+        const items = freePos.map(p => cur[p]);
+        const t1 = items.slice(); const tmp = t1[x]; t1[x] = t1[y]; t1[y] = tmp;
+        const c1 = apply(t1), s1 = scoreOrder(list, c1, d, cost);
+        if (scoreBetter(s1, best)) { cur = c1; best = s1; improved = true; continue; }
+        const t2 = items.slice(); const [mv] = t2.splice(x, 1); t2.splice(y, 0, mv);
+        const c2 = apply(t2), s2 = scoreOrder(list, c2, d, cost);
+        if (scoreBetter(s2, best)) { cur = c2; best = s2; improved = true; }
       }
     }
   }
-  return best;
+  return cur;
 }
-function planDay(d) {
+
+function planDay(d, mx) {
   const list = dayCards(d);
   if (list.length < 4) return null;                  // 三站以內沒有重排的餘地
   const pt = list.map(c => {
@@ -1787,66 +1925,116 @@ function planDay(d) {
   const anchor = list.map((c, i) =>
     i === 0 || i === list.length - 1 || !!c.data.pinTime || !pt[i]);
   const before = list.map((_, i) => i);
-
-  /* 錨點把整天切成幾段，每一段各自重排，段的頭尾不動。 */
-  const after = [];
-  let seg = [0];
-  for (let i = 1; i < list.length; i++) {
-    seg.push(i);
-    if (anchor[i]) {
-      const inner = seg.slice(1, -1);
-      if (inner.length >= 2) {
-        // 先用最近鄰排一輪當起點，再 2-opt 收斂
-        const remain = inner.slice();
-        const nn = [seg[0]];
-        while (remain.length) {
-          const last = pt[nn[nn.length - 1]];
-          let bi = 0, bd = Infinity;
-          remain.forEach((x, xi) => {
-            const dd = (last && pt[x]) ? haversine(last, pt[x]) : Infinity;
-            if (dd < bd) { bd = dd; bi = xi; }
-          });
-          nn.push(remain.splice(bi, 1)[0]);
-        }
-        nn.push(seg[seg.length - 1]);
-        const opt = twoOpt(nn, pt);
-        after.push(...(after.length ? opt.slice(1) : opt));
-      } else {
-        after.push(...(after.length ? seg.slice(1) : seg));
-      }
-      seg = [i];
-    }
-  }
-  const changed = after.some((v, i) => v !== before[i]);
-  return { list, pt, before, after, anchor,
-           lenBefore: pathLen(before, pt), lenAfter: pathLen(after, pt),
-           movable: anchor.filter(a => !a).length, changed };
+  const cost = makeCost(list, pt, mx);
+  const distOf = makeDist(list, pt, mx);
+  const after = searchOrder(list, before, anchor, d, cost);
+  const km = o => { let t = 0; for (let i = 1; i < o.length; i++) t += distOf(o[i-1], o[i]); return t; };
+  return { list, pt, before, after, anchor, mx: !!mx,
+           scoreBefore: scoreOrder(list, before, d, cost),
+           scoreAfter: scoreOrder(list, after, d, cost),
+           lenBefore: km(before), lenAfter: km(after),
+           movable: anchor.filter(a => !a).length,
+           changed: after.some((v, i) => v !== before[i]) };
 }
 
-/* 用任意順序跑一次時刻推算，重排前後都要跑，才知道換順序是變好還是變壞。
-   路程一律走 legOf()——重排後舊的量測值失效，會自動落回程式端估算。 */
-function simulate(list, order, d) {
-  let t = hm2min(dayStart(d));
-  if (t == null) t = 540;
-  const dp = dateParts(dayDate(d));
-  return order.map((idx, k) => {
-    const c = list[idx];
-    const pin = hm2min(c.data.pinTime);
-    const arrive = (pin != null && pin >= t) ? pin : t;
-    const depart = arrive + (Number(c.data.stayMin) || 0);
-    const nxt = k < order.length - 1 ? list[order[k + 1]] : null;
-    const leg = nxt ? legOf(c, nxt) : null;
-    t = depart + (leg && leg.min != null ? leg.min : 0);
-    const per = c.data.place && c.data.place.hoursPeriods;
-    return { c, arrive, depart,
-             shut: per ? !isOpenAt(per, dp.w, arrive).open : false,
-             leaveShut: per ? !isOpenAt(per, dp.w, depart).open : false };
+/* ── Google 的排程器 ────────────────────────────────────────
+   Route Optimization API 解的是帶時間窗的車輛途程問題：營業時間是
+   時間窗、停留時間是服務時間、釘選是被壓成一個點的時間窗。
+   它跟本地解算器的差別不在「會不會排」，而在「釘選的卡也能被搬動」——
+   本地版把釘選當錨點釘死在原位，這一支會把它移到時間允許的任何位置。
+
+   它不收 API key，只收 OAuth（服務帳戶）。沒設 GOOGLE_SA_KEY 就
+   回 NO_SA_KEY，介面照舊、只是少一顆按鈕。 */
+function hoursWindow(c, d) {
+  const per = c.data.place && c.data.place.hoursPeriods;
+  if (!per || !per.length) return null;
+  if (per.length === 1 && !per[0].close) return null;         // 24 小時，不必設限
+  const w = dateParts(dayDate(d)).w;
+  const hit = per.filter(x => x.open && x.open.day === w);
+  if (!hit.length) return 'CLOSED';
+  return hit.map(x => {
+    const o = x.open.hour * 60 + (x.open.minute || 0);
+    let cl = x.close ? x.close.hour * 60 + (x.close.minute || 0) : 1439;
+    if (x.close && x.close.day !== x.open.day) cl += 1440;    // 跨夜
+    return [o, cl];
   });
 }
+async function optimizeDay(d) {
+  const list = dayCards(d);
+  if (list.length < 4) throw Object.assign(new Error('too few'), { code: 'TOO_FEW' });
+  const withPt = list.map(c => c.data.place && c.data.place.lat != null);
+  if (!withPt[0] || !withPt[list.length - 1])
+    throw Object.assign(new Error('no ends'), { code: 'NO_ENDS' });
 
-function sheetPlan() {
+  const startMin = hm2min(dayStart(d)) ?? 540;
+  const ref = list[0].data.place;
+  const T = m => departISO(d, m, ref);
+  const gStart = T(startMin), gEnd = T(startMin + 16 * 60);
+  if (!gStart || !gEnd)
+    throw Object.assign(new Error('past'), { code: 'PAST_DATE' });
+
+  const mid = [], skipped = [], closed = [];
+  for (let i = 1; i < list.length - 1; i++) {
+    const c = list[i];
+    if (!withPt[i]) { skipped.push(c.data.name || '未命名'); continue; }
+    const win = hoursWindow(c, d);
+    if (win === 'CLOSED') closed.push(c.data.name || '未命名');
+    const p = c.data.place;
+    const del = {
+      arrivalWaypoint: { location: { latLng: { latitude: p.lat, longitude: p.lng } } },
+      duration: Math.max(60, (Number(c.data.stayMin) || 0) * 60) + 's',
+    };
+    const pin = hm2min(c.data.pinTime);
+    if (pin != null) {
+      // 釘選＝把時間窗壓成一個點，讓解算器沒有別的選擇。
+      del.timeWindows = [{ startTime: T(pin), endTime: T(pin) }];
+    } else if (Array.isArray(win)) {
+      del.timeWindows = win
+        .map(([o, cl]) => ({ startTime: T(o), endTime: T(Math.min(cl, startMin + 16 * 60)) }))
+        .filter(x => x.startTime && x.endTime);
+    }
+    mid.push({ card: c, shipment: { label: c.id, deliveries: [del] } });
+  }
+  if (mid.length < 2) throw Object.assign(new Error('nothing to move'), { code: 'NO_MOVABLE' });
+
+  const first = list[0].data.place, last = list[list.length - 1].data.place;
+  const model = {
+    globalStartTime: gStart,
+    globalEndTime: gEnd,
+    shipments: mid.map(x => x.shipment),
+    vehicles: [{
+      startWaypoint: { location: { latLng: { latitude: first.lat, longitude: first.lng } } },
+      endWaypoint: { location: { latLng: { latitude: last.lat, longitude: last.lng } } },
+      startTimeWindows: [{ startTime: T(startMin + (Number(list[0].data.stayMin) || 0)) }],
+      travelMode: (S.trip.defaultMode === 'walk') ? 'WALKING' : 'DRIVING',
+      costPerHour: 60,
+    }],
+  };
+  const res = await gmap('optimize', { model });
+  const route = (res.routes || [])[0];
+  if (!route || !route.visits) throw Object.assign(new Error('no route'), { code: 'NO_SOLUTION' });
+  const seq = route.visits
+    .slice()
+    .sort((a, b) => String(a.startTime || '').localeCompare(String(b.startTime || '')))
+    .map(v => mid[v.shipmentIndex || 0])
+    .filter(Boolean);
+  /* 沒有座標的卡沒進模型，把它們補回原來的相對位置（接在最後一站之前），
+     不然套用順序時會整批消失。 */
+  const order = [0]
+    .concat(seq.map(x => list.indexOf(x.card)))
+    .concat(list.map((_, i) => i).filter(i => i > 0 && i < list.length - 1 && !withPt[i]))
+    .concat([list.length - 1]);
+  return { list, order, skipped, closed,
+           visits: route.visits.length, metrics: route.metrics || null };
+}
+
+async function sheetPlan() {
   const d = S.day;
-  const r = planDay(d);
+  const list0 = dayCards(d);
+  if (list0.length < 4) return toast('這一天不到四站，沒有重排的餘地');
+  toast('正在向 Google 要實際車程…', 4000);
+  const mx = await dayMatrix(d, list0);
+  const r = planDay(d, mx);
   if (!r) return toast('這一天不到四站，沒有重排的餘地');
   const noCoord = r.anchor.filter((a, i) => a && !r.pt[i]).length;
   const rows = r.after.map((idx, k) => {
@@ -1858,47 +2046,64 @@ function sheetPlan() {
       '</span></div>';
   }).join('');
   const saved = r.lenBefore - r.lenAfter;
-  const simA = simulate(r.list, r.before, d);
-  const simB = simulate(r.list, r.after, d);
-  const shutA = simA.filter(x => x.shut);
-  const shutB = simB.filter(x => x.shut);
-  const endA = simA[simA.length - 1].depart, endB = simB[simB.length - 1].depart;
-  const hoursBlk = (() => {
-    const known = simB.filter(x => x.c.data.place && x.c.data.place.hoursPeriods).length;
-    if (!known) return '<p class="hint" style="margin-top:-4px">' +
-      '這一天沒有任何一站有營業時間資料，所以無法比對。' +
-      '設好 Google API key 之後會自動補上。</p>';
-    let h = '<div class="fld stack"><span class="lab">營業時間比對</span><div class="hours">' +
-      '有營業時間的 ' + known + ' 站　重排前 ' + shutA.length + ' 站撲空　重排後 ' +
-      shutB.length + ' 站撲空</div>';
-    if (shutB.length) h += '<div class="hours" style="margin-top:5px">' +
-      shutB.map(x => '<div style="color:var(--vermilion)">' + min2hm(x.arrive) + '　' +
-        esc(x.c.data.name) + ' 到的時候沒開</div>').join('') + '</div>';
-    return h + '</div>';
+  const A = r.scoreBefore, B = r.scoreAfter;
+  const known = r.list.filter(c => c.data.place && c.data.place.hoursPeriods).length;
+  const shutRows = (() => {
+    const dp = dateParts(dayDate(d));
+    let t = hm2min(dayStart(d)); if (t == null) t = 540;
+    const cost = makeCost(r.list, r.pt, mx);
+    const out = [];
+    for (let k = 0; k < r.after.length; k++) {
+      const c = r.list[r.after[k]];
+      const pin = hm2min(c.data.pinTime);
+      const arrive = (pin != null && pin >= t) ? pin : t;
+      const per = c.data.place && c.data.place.hoursPeriods;
+      if (per) { const o = isOpenAt(per, dp.w, arrive);
+        if (!o.unknown && !o.open) out.push(min2hm(arrive) + '　' + (c.data.name || '未命名')); }
+      const depart = arrive + (Number(c.data.stayMin) || 0);
+      if (k < r.after.length - 1) t = depart + cost(r.after[k], r.after[k + 1]);
+    }
+    return out;
   })();
+
   openSheet('排順路',
     '<p class="prose" style="margin-bottom:10px">' +
       (r.changed
-        ? '把可以動的那幾站重排之後，直線總距離從 <b>' + dist(Math.round(r.lenBefore)) +
-          '</b> 降到 <b>' + dist(Math.round(r.lenAfter)) + '</b>，少繞 <b>' +
-          dist(Math.round(saved)) + '</b>。'
-        : '算過了，目前的順序已經是最順的，沒有東西要改。') +
+        ? '重排之後，收工時間從 <b>' + min2hm(A.end) + '</b> 變成 <b>' + min2hm(B.end) +
+          '</b>，開車距離從 <b>' + dist(Math.round(r.lenBefore)) + '</b> 降到 <b>' +
+          dist(Math.round(r.lenAfter)) + '</b>。'
+        : '算過了，目前的順序已經是最好的，沒有東西要改。') +
     '</p>' +
     '<div class="fld stack"><span class="lab">重排後的順序</span><div>' + rows + '</div></div>' +
-    '<div class="fld stack"><span class="lab">收工時間</span><div class="hours">' +
-      min2hm(endA) + ' → ' + min2hm(endB) +
-      (endB < endA ? '　早收 ' + durTxt(endA - endB) : endB > endA ? '　晚收 ' + durTxt(endB - endA) : '　沒變') +
+    '<div class="fld stack"><span class="lab">比較</span><div class="hours">' +
+      '<div>收工　' + min2hm(A.end) + ' → ' + min2hm(B.end) +
+        (B.end < A.end ? '　早收 ' + durTxt(A.end - B.end)
+         : B.end > A.end ? '　晚收 ' + durTxt(B.end - A.end) : '　沒變') + '</div>' +
+      '<div>路上　' + durTxt(Math.round(A.travel)) + ' → ' + durTxt(Math.round(B.travel)) + '</div>' +
+      '<div>枯等　' + durTxt(Math.round(A.wait)) + ' → ' + durTxt(Math.round(B.wait)) + '</div>' +
+      '<div' + (B.shut ? ' style="color:var(--vermilion)"' : '') + '>撲空　' +
+        A.shut + ' 站 → ' + B.shut + ' 站' +
+        (known ? '（' + known + ' 站有營業時間可比對）' : '（沒有任何一站有營業時間資料）') +
+        '</div>' +
       '</div></div>' +
-    hoursBlk +
+    (shutRows.length
+      ? '<div class="fld stack"><span class="lab">重排後仍然撲空</span><div class="hours">' +
+        shutRows.map(x => '<div style="color:var(--vermilion)">' + esc(x) + '</div>').join('') +
+        '</div></div>'
+      : '') +
     '<p class="hint" style="margin-bottom:12px">' +
+      '路程用的是 <b>' + (r.mx ? 'Google 的實際車程' : '直線距離估算') + '</b>' +
+      (r.mx ? '（含出發時段的路況）。' : '——沒拿到實際車程，山路會被低估。') + '<br>' +
+      '營業時間是<b>約束</b>不是事後檢查：會撲空的順序在被選中之前就已經淘汰了。<br>' +
       '「固定」的不會動：當天第一站與最後一站、所有釘選時間的卡' +
       (noCoord ? '、以及 ' + noCoord + ' 張沒有座標的卡' : '') + '。<br>' +
-      '成本用的是<b>直線距離</b>，不是實際車程——山路、跨河、單行道會失準。<br>' +
-      '排順路本身<b>不會</b>把營業時間納入計算，但上面已經幫你比對過重排前後各有幾站撲空。<br>' +
-      '順序變動的路段，原本的路程時間會被清掉。' +
+      '順序變動的路段，原本的路程時間會被清掉並重新查詢。' +
     '</p>' +
-    (r.changed ? '<button class="btn fill wide" id="planGo">套用這個順序</button>' : ''),
+    (r.changed ? '<button class="btn fill wide" id="planGo">套用這個順序</button>' : '') +
+    '<button class="btn wide" id="planGoogle" style="margin-top:8px">改用 Google 排程器</button>' +
+    '<div id="planOut"></div>',
     () => {
+      $('#planGoogle').onclick = () => runGoogleOptimizer(d);
       const go = $('#planGo');
       if (go) go.onclick = async () => {
         /* 只有仍然相鄰的那一對才留得住既有的路程時間，其餘清掉——
@@ -1919,9 +2124,55 @@ function sheetPlan() {
         closeSheet();
         if (S.trip.autoRoute) ensureLegs(d, true);
         render();
-        toast('已重排，少繞 ' + dist(Math.round(saved)));
+        toast('已重排，收工 ' + min2hm(B.end));
       };
     });
+}
+
+async function runGoogleOptimizer(d) {
+  const out = $('#planOut'), btn = $('#planGoogle');
+  btn.disabled = true; out.innerHTML = '<div class="acbusy">Google 排程器計算中…</div>';
+  try {
+    const g = await optimizeDay(d);
+    const rows = g.order.map((idx, k) =>
+      '<div class="todo"><span class="t">' + (k + 1) + '. ' +
+      esc(g.list[idx].data.name || '未命名') + '</span></div>').join('');
+    out.innerHTML =
+      '<div class="fld stack" style="margin-top:12px"><span class="lab">Google 排程器的順序</span>' +
+      '<div>' + rows + '</div></div>' +
+      (g.closed.length ? '<p class="hint" style="color:var(--vermilion)">這一天公休、排到哪裡都沒用：' +
+        g.closed.map(esc).join('、') + '</p>' : '') +
+      (g.skipped.length ? '<p class="hint">沒有座標、沒進模型（維持原位）：' +
+        g.skipped.map(esc).join('、') + '</p>' : '') +
+      '<button class="btn fill wide" id="planGoGo" style="margin-top:8px">套用 Google 的順序</button>';
+    $('#planGoGo').onclick = async () => {
+      let key = '';
+      for (let k = 0; k < g.order.length; k++) {
+        const c = g.list[g.order[k]];
+        key = keyBetween(key, '');
+        c.orderKey = key;
+        c.data.leg = c.data.leg ? { mode: c.data.leg.mode } : null;
+        await touch(c);
+      }
+      closeSheet();
+      if (S.trip.autoRoute) ensureLegs(d, true);
+      render();
+      toast('已套用 Google 排程器的順序');
+    };
+  } catch (e) {
+    const msg = {
+      NO_SA_KEY: '這一支不吃 API key，要另外設一組服務帳戶金鑰（見 docs/GOOGLE-MAPS-SETUP.md）。' +
+                 '在那之前，上面本地解算器的結果一樣可以用。',
+      TOO_FEW: '這一天不到四站。',
+      NO_ENDS: '第一站或最後一站沒有座標，解算器需要起訖點。',
+      NO_MOVABLE: '可以動的站不到兩個。',
+      PAST_DATE: '這一天已經過了，Route Optimization 不收過去的時間。',
+      NO_SOLUTION: '在營業時間與釘選的限制下找不到可行解——通常是某一站的時間窗互相打架。',
+    }[e.code] || ('失敗：' + (e.code || e.message));
+    out.innerHTML = '<p class="hint" style="margin-top:10px;color:var(--vermilion)">' + esc(msg) + '</p>';
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 /* 一天的形狀：橫軸是時間，每一站畫成一段膠囊，站與站之間的空白就是
@@ -1993,6 +2244,7 @@ function bindPlate() {
   const home = $('#btnHome'); if (home) home.onclick = leaveTrip;
   const st = $('#btnStart'); if (st) st.onclick = sheetDayStart;
   const pl = $('#btnPlan'); if (pl) pl.onclick = sheetPlan;
+  const nr = $('#btnNear'); if (nr) nr.onclick = sheetNearby;
   $$('[data-open]', p).forEach(n => n.onclick = () => {
     S.open = (S.open === n.dataset.open) ? null : n.dataset.open;
     renderPlate();
@@ -2097,7 +2349,8 @@ function sheetAdd() {
   openSheet('新增行程',
     '<div class="fld stack"><span class="lab">Google 地圖網址，或直接打名稱</span>' +
     '<textarea class="inp" id="addSrc" style="min-height:76px;font-family:var(--mono);font-size:14px" ' +
-    'placeholder="https://maps.app.goo.gl/… 或 清水寺"></textarea></div>' +
+    'placeholder="https://maps.app.goo.gl/… 或 清水寺"></textarea>' +
+    '<div id="acList" class="aclist hide"></div></div>' +
     '<div class="fld stack"><span class="lab">放到哪一天</span>' +
     '<select class="inp" id="addDay">' + dayOpts.join('') + '</select></div>' +
     '<button class="btn fill wide" id="addGo">抓取並新增</button>' +
@@ -2105,6 +2358,63 @@ function sheetAdd() {
     '<p class="hint">從 iPhone 的 Google 地圖 App 分享出來的短網址可以直接貼。' +
     '抓回來的是名稱、地址、電話、座標、營業時間與評分。</p>',
     () => {
+      /* ── 打字就跳候選 ──────────────────────────────────
+         同一個 sessionToken 貫穿「一路打字＋最後選一個」，Google 會把
+         整段算成一次工作階段計費，而不是每敲一個字算一次。 */
+      const token = uuid();
+      const box = $('#acList'), src = $('#addSrc');
+      let timer = null, seq = 0;
+      const hideAc = () => { box.classList.add('hide'); box.innerHTML = ''; };
+      const pick = async (pid, name) => {
+        hideAc();
+        $('#addGo').disabled = true; $('#addGo').textContent = '抓取中…';
+        try {
+          const day = parseInt($('#addDay').value, 10);
+          const res = await gmap('resolve', { url:
+            'https://www.google.com/maps/search/?api=1&query=x&query_place_id=' + encodeURIComponent(pid) });
+          const pl = res.place || {};
+          const c = await addCard(day, {
+            name: pl.name || name, stayMin: 60, catId: guessCat(pl), place: pl,
+          });
+          closeSheet();
+          S.day = day; S.open = c.id; render();
+          if (day >= 0) { ensureLegs(day); loadWeather(day); }
+          toast('已加入：' + (pl.name || name));
+        } catch (e) {
+          $('#addGo').disabled = false; $('#addGo').textContent = '抓取並新增';
+          toast(gmapMsg(e));
+        }
+      };
+      src.addEventListener('input', () => {
+        const v = src.value.trim();
+        clearTimeout(timer);
+        // 貼網址的人不需要候選；兩個字以下也還不夠 Google 判斷。
+        if (v.length < 2 || /^https?:\/\//i.test(v) || /goo\.gl|google\.[a-z.]+\/maps/i.test(v)) {
+          hideAc(); return;
+        }
+        timer = setTimeout(async () => {
+          const mine = ++seq;
+          box.classList.remove('hide');
+          box.innerHTML = '<div class="acbusy">搜尋中…</div>';
+          try {
+            const r = await gmap('autocomplete',
+              { input: v, bias: tripCenter() || undefined, sessionToken: token });
+            if (mine !== seq) return;                    // 打得比回應快，舊的丟掉
+            if (!r.suggestions.length) { box.innerHTML = '<div class="acbusy">找不到</div>'; return; }
+            box.innerHTML = r.suggestions.slice(0, 6).map(x =>
+              '<button class="acitem" data-pid="' + esc(x.placeId || '') + '" data-nm="' + esc(x.main) + '">' +
+              '<div class="acmain">' + esc(x.main) + '</div>' +
+              (x.sub ? '<div class="acsub">' + esc(x.sub) + '</div>' : '') + '</button>').join('');
+            $$('#acList .acitem').forEach(b => {
+              b.onclick = () => { if (b.dataset.pid) pick(b.dataset.pid, b.dataset.nm); };
+            });
+          } catch (e) {
+            if (mine !== seq) return;
+            hideAc();
+          }
+        }, 280);
+      });
+
       $('#addGo').onclick = async () => {
         const src = $('#addSrc').value.trim();
         const day = parseInt($('#addDay').value, 10);
@@ -2134,6 +2444,109 @@ function sheetAdd() {
       };
     });
 }
+/* 搜尋偏置的中心＝所有已知座標的平均。沒有任何座標時回 null，
+   讓 Google 用全球範圍找——總比拿手機定位（在台灣）去偏置日本的地名好。 */
+function tripCenter() {
+  let n = 0, la = 0, lo = 0;
+  (S.cards || []).forEach(c => {
+    if (c.deleted) return;
+    const p = c.data && c.data.place;
+    if (p && p.lat != null) { la += p.lat; lo += p.lng; n++; }
+  });
+  return n ? { lat: la / n, lng: lo / n, radius: 50000 } : null;
+}
+
+/* 口袋的探索模式：以行程裡任何一站為圓心，問 Google 附近有什麼。
+   口袋原本只是一份手打清單，這讓它變成「還沒決定要不要去」的取材處。
+   一次呼叫吃一次 Nearby Search（含星等是 Enterprise 級，每月 1,000 次免費），
+   所以預設只回 12 筆、也不做自動搜尋——一定要按下去才打。 */
+const NEAR_KINDS = [
+  { id: 'food',  name: '飲食', types: ['restaurant', 'cafe'] },
+  { id: 'sight', name: '景點', types: ['tourist_attraction'] },
+  { id: 'shop',  name: '購物', types: ['shopping_mall', 'department_store'] },
+  { id: 'stay',  name: '住宿', types: ['lodging'] },
+  { id: 'conv',  name: '便利商店', types: ['convenience_store'] },
+];
+function sheetNearby() {
+  const spots = (S.cards || []).filter(c => !c.deleted &&
+    c.data.place && c.data.place.lat != null);
+  if (!spots.length) return toast('還沒有任何一站有座標，沒有圓心可以找');
+  /* 預設圓心挑「當天的第一站」，沒有就挑第一張有座標的。 */
+  const pref = spots.find(c => c.dayIndex === S.day) || spots[0];
+  const opts = spots.map(c => {
+    const tag = c.dayIndex < 0 ? '口袋' : '第 ' + (c.dayIndex + 1) + ' 天';
+    return '<option value="' + c.id + '"' + (c.id === pref.id ? ' selected' : '') + '>' +
+           esc(c.data.name || '未命名') + '（' + tag + '）</option>';
+  }).join('');
+
+  openSheet('找附近',
+    '<div class="fld stack"><span class="lab">以哪一站為圓心</span>' +
+    '<select class="inp" id="nrBase">' + opts + '</select></div>' +
+    '<div class="fld stack"><span class="lab">找什麼</span><div class="cats" id="nrKind">' +
+    NEAR_KINDS.map((k, i) => '<button class="cat' + (i === 0 ? ' on' : '') +
+      '" data-k="' + k.id + '">' + k.name + '</button>').join('') + '</div></div>' +
+    '<div class="fld stack"><span class="lab">半徑</span>' +
+    '<select class="inp" id="nrRad">' +
+    [[500,'500 公尺'],[1500,'1.5 公里'],[3000,'3 公里'],[10000,'10 公里']]
+      .map(([v,t]) => '<option value="' + v + '"' + (v === 1500 ? ' selected' : '') + '>' + t + '</option>')
+      .join('') + '</select></div>' +
+    '<button class="btn fill wide" id="nrGo">搜尋</button>' +
+    '<div id="nrOut" style="margin-top:12px"></div>' +
+    '<p class="hint">找到的地方會加進<b>候選口袋</b>，不會直接插進某一天。' +
+    '每按一次搜尋就是一次 Google 查詢，所以不會自動搜。</p>',
+    () => {
+      let kind = NEAR_KINDS[0];
+      $$('#nrKind [data-k]').forEach(n => n.onclick = () => {
+        kind = NEAR_KINDS.find(k => k.id === n.dataset.k) || NEAR_KINDS[0];
+        $$('#nrKind .cat').forEach(x => x.classList.toggle('on', x.dataset.k === kind.id));
+      });
+      $('#nrGo').onclick = async () => {
+        const base = spots.find(c => c.id === $('#nrBase').value);
+        if (!base) return;
+        const out = $('#nrOut');
+        $('#nrGo').disabled = true; out.innerHTML = '<div class="acbusy">搜尋中…</div>';
+        try {
+          const p = base.data.place;
+          const r = await gmap('nearby', {
+            center: { lat: p.lat, lng: p.lng },
+            types: kind.types,
+            radius: parseInt($('#nrRad').value, 10),
+            max: 12,
+          });
+          /* 已經在行程裡的就不要再列一次——口袋裡塞重複的地點是純噪音。 */
+          const have = new Set((S.cards || []).filter(c => !c.deleted)
+            .map(c => (c.data.place && c.data.place.placeId) || '').filter(Boolean));
+          const rows = r.places.filter(x => !have.has(x.placeId));
+          if (!rows.length) { out.innerHTML = '<div class="acbusy">附近沒有新的（或都已經在行程裡了）</div>'; return; }
+          out.innerHTML = rows.map((x, i) => {
+            const km = dist(Math.round(haversine([p.lat, p.lng], [x.lat, x.lng])));
+            return '<div class="todo"><span class="t"><b>' + esc(x.name) + '</b>' +
+              '<div class="acsub">' + (x.rating ? '★ ' + x.rating + '（' + (x.ratingCount || 0) + '）· ' : '') +
+              (x.type ? esc(x.type) + ' · ' : '') + km + '</div></span>' +
+              '<button class="btn" data-add="' + i + '" style="min-height:26px;padding:0 8px">加</button></div>';
+          }).join('');
+          $$('#nrOut [data-add]').forEach(b => b.onclick = async () => {
+            const x = rows[parseInt(b.dataset.add, 10)];
+            b.disabled = true; b.textContent = '✓';
+            await addCard(-1, {
+              name: x.name, stayMin: 60,
+              catId: guessCat({ type: x.type, name: x.name }),
+              place: { placeId: x.placeId, name: x.name, address: x.address,
+                       lat: x.lat, lng: x.lng, rating: x.rating,
+                       ratingCount: x.ratingCount, type: x.type },
+            });
+            render();
+          });
+        } catch (e) {
+          out.innerHTML = '';
+          toast(gmapMsg(e));
+        } finally {
+          $('#nrGo').disabled = false;
+        }
+      };
+    });
+}
+
 /* Google 給的 primaryTypeDisplayName 拿來猜類別；猜錯使用者一秒就能改。 */
 function guessCat(pl) {
   const t = ((pl.type || '') + ' ' + (pl.name || ''));
@@ -2499,8 +2912,19 @@ function sheetTrip() {
     ' / vv ' + Math.round(window.visualViewport ? window.visualViewport.height : 0) +
     ' / sab ' + getComputedStyle(document.documentElement)
       .getPropertyValue('--sab').trim() +
-    ' / scr ' + window.screen.height + ' / cli ' +
-    document.documentElement.clientHeight + ' / dpr ' + window.devicePixelRatio + '</p>' +
+    ' / scr ' + window.screen.height + ' / dpr ' + window.devicePixelRatio + '</p>' +
+    /* 真正要問的是幾何：操作列的底有沒有貼到視窗的底。
+       貼到了就代表剩下的那條在網頁視窗之外，網頁畫不到，
+       只能靠 viewport-fit 或重新加到主畫面來解決。 */
+    (() => {
+      const a = $('#app'), k = $('#dock');
+      if (!a || !k) return '';
+      const ar = a.getBoundingClientRect(), kr = k.getBoundingClientRect();
+      return '<p class="hint" style="text-align:center;opacity:.7">app ' +
+        Math.round(ar.top) + '–' + Math.round(ar.bottom) + ' · dock ' +
+        Math.round(kr.top) + '–' + Math.round(kr.bottom) + ' · 差 ' +
+        Math.round(window.innerHeight - kr.bottom) + '</p>';
+    })() +
     '<p class="hint" style="text-align:center;opacity:.7">字型：' +
     (fontsPresent().join('、') || '（都沒有）') + '</p>',
     () => {
@@ -2559,12 +2983,6 @@ function fitViewport() {
     ? Math.round(Math.max(window.innerHeight || 0, vv ? vv.height : 0))
     : Math.round(vv ? vv.height : window.innerHeight);
   if (h > 0) document.documentElement.style.setProperty('--vh', h + 'px');
-  /* 有些機型（或開了顯示放大）在獨立模式下視窗會比螢幕短一截，
-     頁底就露出一條紙色的空白。差額量出來交給 --gap，讓操作列往下鋪滿。
-     上限 80px：超過就不是這個成因，硬鋪只會把版面弄壞。 */
-  const scr = (window.screen && window.screen.height) || 0;
-  const gap = (STANDALONE && scr > h) ? Math.min(80, scr - h) : 0;
-  document.documentElement.style.setProperty('--gap', gap + 'px');
 }
 /* 啟動那一秒內連量幾次：獨立模式的第一次量測常常落在啟動動畫中間。 */
 function fitViewportSoon() {
