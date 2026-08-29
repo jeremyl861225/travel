@@ -77,6 +77,10 @@
   /* 瀏覽器裡的底部工具列本來就蓋住 home indicator，再墊一次 safe-area
      就會在頁底留下一條空白。只有加到主畫面的獨立模式才需要墊。 */
   --sab:0px;
+  /* 視窗比螢幕短時的差額，由 JS 實測寫進來（只在獨立模式，且上限 80px）。
+     不拿它去移動按鈕，只讓操作列的底色往下多鋪這一段，
+     把頁底那條「紙色的空白」蓋掉。量不到就是 0，什麼都不會變。 */
+  --gap:0px;
 }
 @media (display-mode: standalone), (display-mode: fullscreen){
   :root{ --sab:env(safe-area-inset-bottom); }
@@ -154,7 +158,9 @@ a{color:inherit}
      所以只在對紙對比不足時補一道內描邊，其餘日子是完全無框的。 */
   box-shadow:inset 0 0 0 1px var(--accent-edge);
 }
-.leaf + .leaf{margin-top:0}
+/* 口袋沒有路程列，兩張卡會直接相黏。這條只在「真的相鄰」時生效，
+   一般日子中間隔著路程列，選擇器不成立，版面不受影響。 */
+.leaf + .leaf{margin-top:7px}
 /* 下一站：卡片左緣一道當日色的書口，比整張換色安靜 */
 .leaf.past{opacity:.52}
 /* 空狀態卡在色底上：字色一律繼承，別再用紙底時代的灰 */
@@ -186,6 +192,7 @@ a{color:inherit}
 .mark{width:19px;height:19px;display:block;stroke:currentColor;fill:none;
   stroke-width:1.6;stroke-linecap:square;stroke-linejoin:miter}
 .mark.sm{width:17px;height:17px;stroke-width:2}
+.mark.xs{width:13px;height:13px;stroke-width:2.1}
 /* 參考站的實心方磚：線稿住在一塊當日板色裡，不是散落的彩色小圓點 */
 .tile{display:inline-flex;align-items:center;justify-content:center;flex:0 0 auto;
   width:26px;height:26px;border-radius:6px;background:var(--accent);color:var(--accent-ink);
@@ -242,7 +249,11 @@ a{color:inherit}
 .striplab{display:flex;justify-content:space-between;margin-top:4px;
   font-family:var(--mono);font-size:9.5px;letter-spacing:.03em;color:var(--ink3)}
 .striplab span:nth-child(2){opacity:.75}
-.headtop{display:flex;align-items:center;gap:8px;padding:5px 10px 5px 10px;border-bottom:1px solid var(--rule2)}
+.headtop{display:flex;align-items:center;gap:7px;padding:5px 10px 5px 10px;border-bottom:1px solid var(--rule2)}
+/* 返回是導覽不是動作，不給框；左緣與下面的 DAY 方磚同一條線。 */
+.backb{border:none;background:none;padding:0;min-height:0;flex:0 0 auto;
+  font-family:var(--sans);font-size:17px;line-height:1;color:var(--ink2)}
+.backb:active{background:none;color:var(--ink)}
 .trip{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;
   color:var(--ink2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1}
 .headmain{display:grid;grid-template-columns:76px 1fr;align-items:start}
@@ -264,6 +275,10 @@ a{color:inherit}
   min-height:31px;padding:5px 12px;border:1px solid var(--rule);border-radius:var(--r2);
   font-family:var(--mono);font-size:11.5px;letter-spacing:.05em;background:transparent;
   text-decoration:none;
+  /* 行高必須是 1。中英混排時行盒的高度由第一個可用字型（Avenir Next）的
+     ascent/descent 決定，中文卻是用蘋方的字面在畫——留了半行行距，
+     兩套字面的落點就不一樣，看起來整排字都往上黏。 */
+  line-height:1;
 }
 /* 次要鍵按下＝整塊翻黑；主要鍵按下＝框線加重，填色不變。兩種刻意不同。 */
 .btn:active{background:var(--ink);color:var(--leaf);border-color:var(--ink)}
@@ -298,9 +313,9 @@ textarea.inp{font-family:var(--serif);font-size:15px;line-height:1.65;letter-spa
   /* home indicator 的高度不能當成「墊在按鈕下面的內距」——那會讓按鈕
      黏在操作列上緣，下面留一條與上緣不對稱的空白，看起來就是頁尾破了個洞。
      改成把 safe-area 算進整條的高度、內容垂直置中，空白就上下均分。 */
-  position:absolute;left:0;right:var(--rail);bottom:0;z-index:20;
-  height:calc(var(--dock) + var(--sab));
-  padding:0 12px 0 var(--bind);
+  position:absolute;left:0;right:var(--rail);bottom:calc(-1 * var(--gap));z-index:20;
+  height:calc(var(--dock) + var(--sab) + var(--gap));
+  padding:0 12px var(--gap) var(--bind);
   display:flex;align-items:center;gap:8px;
   background:var(--leaf);border-top:1px solid var(--rule2);
   border-radius:0;border-top:1px solid var(--rule1);
@@ -311,7 +326,7 @@ textarea.inp{font-family:var(--serif);font-size:15px;line-height:1.65;letter-spa
 .sync.err{color:var(--vermilion)}
 
 /* ── 抽頁（sheet）：以打孔邊為軸的兩格步進，不淡入 ────────── */
-.sheetwrap{position:fixed;left:0;right:0;top:0;height:var(--vh, 100dvh);z-index:60;display:none}
+.sheetwrap{position:fixed;left:0;right:0;top:0;height:calc(var(--vh, 100dvh) + var(--gap));z-index:60;display:none}
 .sheetwrap.open{display:block}
 .scrim{position:absolute;inset:0;background:rgba(0,0,0,.42)}
 .sheet{
@@ -425,6 +440,9 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
   <symbol id="m-play" viewBox="0 0 24 24"><path d="M3 6h18v12H3z"/><path d="M3 11h18"/><path d="M12 6v5"/><path d="M9 15h6"/></symbol>
   <symbol id="m-food" viewBox="0 0 24 24"><path d="M6 3v8a2 2 0 0 0 4 0V3"/><path d="M8 11v10"/><path d="M17 3c-2 2-2 5-2 7h4c0-2 0-5-2-7Z"/><path d="M17 10v11"/></symbol>
   <symbol id="m-stay" viewBox="0 0 24 24"><path d="M3 19v-9h14a4 4 0 0 1 4 4v5"/><path d="M3 14h18"/><path d="M7 10V7h6v3"/><path d="M3 19h18"/></symbol>
+  <!-- 外連箭頭。文字箭頭 U+2197 在 iOS 會被 Apple Color Emoji 接走，變成藍色方塊，
+       只能自己畫；線寬與其他刻印同一套。 -->
+  <symbol id="m-ext" viewBox="0 0 24 24"><path d="M7 17 17 7"/><path d="M9.5 7H17v7.5"/></symbol>
   <symbol id="m-transit" viewBox="0 0 24 24"><path d="M4 4h16v10H4z"/><path d="M4 9.5h16"/><circle cx="8" cy="18" r="2.2"/><circle cx="16" cy="18" r="2.2"/></symbol>
   <symbol id="m-view" viewBox="0 0 24 24"><path d="M2 20h20"/><path d="M2 20 9 8l4 6 3-4 6 10"/></symbol>
   <symbol id="m-hot" viewBox="0 0 24 24"><path d="M4 14h16v7H4z"/><path d="M7 11c0-2 2-2 2-4M12 11c0-2 2-2 2-4M17 11c0-2 2-2 2-4"/></symbol>
@@ -497,7 +515,7 @@ const HUES = [
 /* 建置代號。手機上「改了但看起來沒變」十之八九是舊快取，
    在設定裡把這個字串印出來，一眼就知道手上這份是不是新的。
    改版時跟著 sw.js 的 CACHE 一起跳號。 */
-const BUILD = '2026-08-29 · v4';
+const BUILD = '2026-08-29 · v5';
 const VERMILION = '#D62D14';
 const MARKS = ['nature','heritage','shop','play','food','stay','transit','view','hot','pin'];
 const DEFAULT_CATS = [
@@ -1575,7 +1593,7 @@ function renderPlate() {
     const dayUrl = gmDay(list.filter(c => gq(c) || (c.data.place && c.data.place.lat != null)),
                          S.trip.defaultMode);
     h += '<div class="head"><div class="headtop">' +
-      '<button class="btn" id="btnHome" style="min-height:26px;padding:2px 8px">←</button>' +
+      '<button class="backb" id="btnHome" aria-label="回旅程列表">←</button>' +
       '<span class="trip">' + esc(S.trip.name) + '</span></div>' +
       '<div class="headmain"><div class="headmar">' +
         '<div class="dnum">DAY</div><div class="dbig">' + (d + 1) + '</div></div>' +
@@ -1590,12 +1608,13 @@ function renderPlate() {
         '<div class="startrow">' +
           '<button class="btn fill" id="btnStart">出發 ' + dayStart(d) + '</button>' +
           (S.edit ? '<button class="btn fill" id="btnPlan">排順路</button>' : '') +
-          (dayUrl ? '<a class="btn fill" href="' + dayUrl + '" target="_blank" rel="noopener">Map ↗</a>' : '') +
+          (dayUrl ? '<a class="btn fill" href="' + dayUrl + '" target="_blank" rel="noopener">Map' +
+            mark('ext','xs') + '</a>' : '') +
         '</div>' +
       '</div></div></div>';
   } else {
     h += '<div class="head"><div class="headtop">' +
-      '<button class="btn" id="btnHome" style="min-height:26px;padding:2px 8px">←</button>' +
+      '<button class="backb" id="btnHome" aria-label="回旅程列表">←</button>' +
       '<span class="trip">' + esc(S.trip.name) + '</span></div>' +
       '<div class="headmain"><div class="headmar"><div class="dnum">POCKET</div>' +
       '<div class="dbig">' + dayCards(-1).length + '</div></div><div class="headbody">' +
@@ -2415,7 +2434,9 @@ function sheetTrip() {
     ' / ih ' + window.innerHeight +
     ' / vv ' + Math.round(window.visualViewport ? window.visualViewport.height : 0) +
     ' / sab ' + getComputedStyle(document.documentElement)
-      .getPropertyValue('--sab').trim() + '</p>',
+      .getPropertyValue('--sab').trim() +
+    ' / scr ' + window.screen.height + ' / cli ' +
+    document.documentElement.clientHeight + ' / dpr ' + window.devicePixelRatio + '</p>',
     () => {
       let m = t.defaultMode || 'drive';
       $$('#tModes [data-m]').forEach(n => n.onclick = () => {
@@ -2472,6 +2493,12 @@ function fitViewport() {
     ? Math.round(Math.max(window.innerHeight || 0, vv ? vv.height : 0))
     : Math.round(vv ? vv.height : window.innerHeight);
   if (h > 0) document.documentElement.style.setProperty('--vh', h + 'px');
+  /* 有些機型（或開了顯示放大）在獨立模式下視窗會比螢幕短一截，
+     頁底就露出一條紙色的空白。差額量出來交給 --gap，讓操作列往下鋪滿。
+     上限 80px：超過就不是這個成因，硬鋪只會把版面弄壞。 */
+  const scr = (window.screen && window.screen.height) || 0;
+  const gap = (STANDALONE && scr > h) ? Math.min(80, scr - h) : 0;
+  document.documentElement.style.setProperty('--gap', gap + 'px');
 }
 /* 啟動那一秒內連量幾次：獨立模式的第一次量測常常落在啟動動畫中間。 */
 function fitViewportSoon() {
