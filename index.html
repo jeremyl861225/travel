@@ -85,7 +85,7 @@
 
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 /* iOS Safari 的 inset:0 指的是版面視窗，比看得到的區域高；用 dvh 才貼齊 */
-html,body{height:100%;overflow:hidden;overscroll-behavior:none}
+html,body{height:100%;overflow:hidden;overscroll-behavior:none;background:var(--paper)}
 body{
   font-family:var(--sans); background:var(--paper); color:var(--ink);
   font-size:15px; line-height:1.45; overscroll-behavior:none;
@@ -295,9 +295,12 @@ textarea.inp{font-family:var(--serif);font-size:15px;line-height:1.65;letter-spa
 
 /* ── 底部操作列（拇指可及） ─────────────────────────────── */
 .dock{
+  /* home indicator 的高度不能當成「墊在按鈕下面的內距」——那會讓按鈕
+     黏在操作列上緣，下面留一條與上緣不對稱的空白，看起來就是頁尾破了個洞。
+     改成把 safe-area 算進整條的高度、內容垂直置中，空白就上下均分。 */
   position:absolute;left:0;right:var(--rail);bottom:0;z-index:20;
   height:calc(var(--dock) + var(--sab));
-  padding:0 12px var(--sab) var(--bind);
+  padding:0 12px 0 var(--bind);
   display:flex;align-items:center;gap:8px;
   background:var(--leaf);border-top:1px solid var(--rule2);
   border-radius:0;border-top:1px solid var(--rule1);
@@ -477,19 +480,24 @@ const CFG = {
   key: 'sb_publishable_pjoI0uuRcCn16-GMC_g0xw_9nqoJU-V',
   iters: 250000,
 };
-/* 使用者從 colormind 的原始色票裡挑的：F 組全五色 ＋ G1/G2/G3 ＋ C1。
-   九色＝九天不重複，第十天起循環。順序照他給的，沒有重排。 */
+/* 使用者從 colormind 的原始色票裡挑的：F 組 ＋ G1/G2/G3 ＋ C1。
+   F5 近白（#E4E5E3）已移除——對象牙白紙只有 1.17:1，輪到它的那天
+   DAY 色塊、分頁鐵、時間軸幾乎是空白的，補邊也救不回來。
+   八色＝八天不重複，第九天起循環。順序照使用者給的，沒有重排。 */
 const HUES = [
   '#9D914A',  // F1 橄欖金
   '#342F32',  // F2 近黑暖灰
   '#597A66',  // F3 苔綠
   '#909D7E',  // F4 鼠尾草
-  '#E4E5E3',  // F5 近白 — 在紙上只有 1.1:1，靠 --accent-edge 補邊才看得見
   '#6A3D4F',  // G1 李
   '#806386',  // G2 藕紫
   '#907DCE',  // G3 長春花
   '#304750',  // C1 板岩藍
 ];
+/* 建置代號。手機上「改了但看起來沒變」十之八九是舊快取，
+   在設定裡把這個字串印出來，一眼就知道手上這份是不是新的。
+   改版時跟著 sw.js 的 CACHE 一起跳號。 */
+const BUILD = '2026-08-29 · v4';
 const VERMILION = '#D62D14';
 const MARKS = ['nature','heritage','shop','play','food','stay','transit','view','hot','pin'];
 const DEFAULT_CATS = [
@@ -2350,7 +2358,17 @@ function sheetTrip() {
     '<button class="btn wide" id="tForget" style="margin-top:8px;color:var(--vermilion);' +
     'border-color:var(--vermilion)">從這台裝置移除</button>' +
     '<p class="hint">移除只影響這支手機，雲端與其他人的資料不動；' +
-    '之後用代碼與密碼還能再加入。</p>',
+    '之後用代碼與密碼還能再加入。</p>' +
+    /* 版本與視窗實測值。前者用來確認手機拿到的是不是新版，
+       後者是頁底對不齊時唯一能問出真相的數字。 */
+    '<p class="hint" style="margin-top:16px;text-align:center;opacity:.7">' +
+    BUILD + ' · ' + (STANDALONE ? '獨立' : '瀏覽器') +
+    ' · vh ' + Math.round(parseFloat(getComputedStyle(document.documentElement)
+      .getPropertyValue('--vh')) || 0) +
+    ' / ih ' + window.innerHeight +
+    ' / vv ' + Math.round(window.visualViewport ? window.visualViewport.height : 0) +
+    ' / sab ' + getComputedStyle(document.documentElement)
+      .getPropertyValue('--sab').trim() + '</p>',
     () => {
       let m = t.defaultMode || 'drive';
       $$('#tModes [data-m]').forEach(n => n.onclick = () => {
@@ -2394,15 +2412,30 @@ function sheetTrip() {
 /* 實測可見高度，寫成 --vh。三個事件都要聽：
    resize 是轉向與鍵盤，visualViewport 的 resize 是工具列收合，
    scroll 是 iOS 把工具列推走的那一段過渡。 */
+const STANDALONE = (matchMedia('(display-mode: standalone)').matches
+                   || matchMedia('(display-mode: fullscreen)').matches
+                   || navigator.standalone === true);
 function fitViewport() {
   const vv = window.visualViewport;
-  const h = Math.round(vv ? vv.height : window.innerHeight);
+  /* 瀏覽器裡要用 visualViewport：innerHeight 含被工具列蓋住的那一段。
+     加到主畫面的獨立模式沒有工具列，innerHeight 就是整個螢幕；
+     而 visualViewport 在啟動動畫還沒結束時會回報偏小的高度，
+     量到就定住，於是頁底永遠少一截。獨立模式取兩者較大的。 */
+  const h = STANDALONE
+    ? Math.round(Math.max(window.innerHeight || 0, vv ? vv.height : 0))
+    : Math.round(vv ? vv.height : window.innerHeight);
   if (h > 0) document.documentElement.style.setProperty('--vh', h + 'px');
+}
+/* 啟動那一秒內連量幾次：獨立模式的第一次量測常常落在啟動動畫中間。 */
+function fitViewportSoon() {
+  [0, 120, 400, 1000].forEach(t => setTimeout(fitViewport, t));
+  requestAnimationFrame(fitViewport);
 }
 
 async function boot() {
-  fitViewport();
+  fitViewportSoon();
   addEventListener('resize', fitViewport);
+  addEventListener('pageshow', fitViewportSoon);
   addEventListener('orientationchange', () => setTimeout(fitViewport, 250));
   if (window.visualViewport) {
     visualViewport.addEventListener('resize', fitViewport);
@@ -2430,8 +2463,22 @@ async function boot() {
     if (document.visibilityState === 'visible' && S.trip) { syncNow(true); render(); }
   });
 
-  if ('serviceWorker' in navigator)
+  if ('serviceWorker' in navigator) {
+    /* 快取策略是 stale-while-revalidate：舊版會先上場，新版在背景寫回去。
+       在手機上這代表「改版後要開第二次才看得到新的」——實際上使用者
+       只會覺得改的東西沒生效。新的 sw 接管時（controllerchange）自動重載一次，
+       同一次開啟就會換成新版。旗標防止無限重載。 */
+    /* 第一次造訪時本來就沒有 controller，sw 的 clients.claim() 也會觸發這個事件，
+       那次不該重載（頁面本來就是最新的）。只有「本來有舊 sw、現在換人」才重載。 */
+    const hadController = !!navigator.serviceWorker.controller;
+    let swapped = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (swapped || !hadController) return;
+      swapped = true;
+      location.reload();
+    });
     addEventListener('load', () => navigator.serviceWorker.register('./sw.js').catch(() => {}));
+  }
 }
 boot();
 </script>

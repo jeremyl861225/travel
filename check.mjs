@@ -130,7 +130,7 @@ const BUILTINS = new Set(['console','Math','JSON','Object','Array','String','Num
   'alert','confirm','prompt','requestAnimationFrame','matchMedia','addEventListener','removeEventListener',
   'indexedDB','visualViewport','crypto','Uint8Array','TextEncoder','TextDecoder','Error','RegExp','document','window',
   'Blob','File','FileReader','URL','Image','FormData','AbortController','performance',
-  'navigator','localStorage','structuredClone','queueMicrotask']);
+  'navigator','localStorage','structuredClone','queueMicrotask','getComputedStyle']);
 const called = new Set();
 for (const x of src.matchAll(/(?:^|[^.\w$])([A-Za-z_$][\w$]*)\s*\(/g)) called.add(x[1]);
 const undef = [...called].filter(f => !defined.has(f) && !KEYWORDS.has(f) && !BUILTINS.has(f));
