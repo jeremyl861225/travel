@@ -79,7 +79,7 @@
 
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 /* iOS Safari 的 inset:0 指的是版面視窗，比看得到的區域高；用 dvh 才貼齊 */
-html,body{height:100dvh;overflow-x:hidden;overscroll-behavior:none}
+html,body{height:100%;overflow:hidden;overscroll-behavior:none}
 body{
   font-family:var(--sans); background:var(--paper); color:var(--ink);
   font-size:15px; line-height:1.45; overscroll-behavior:none;
@@ -98,7 +98,10 @@ a{color:inherit}
 
 /* ── 版面骨架 ───────────────────────────────────────────── */
 #app{
-  position:fixed; left:0; right:0; top:0; height:100dvh; display:grid;
+  /* 高度由 JS 依 visualViewport 實測寫進 --vh：iOS Safari 的 position:fixed
+     是相對「版面視窗」，那個高度含被工具列蓋住的部分；dvh 也會在工具列
+     收合的過渡期間對不上。兩者都會在頁底留一條白。 */
+  position:fixed; left:0; right:0; top:0; height:var(--vh, 100dvh); display:grid;
   grid-template-columns:1fr var(--rail);
   background:var(--paper);
 }
@@ -278,7 +281,7 @@ textarea.inp{font-family:var(--serif);font-size:15px;line-height:1.65;letter-spa
 
 /* ── 底部操作列（拇指可及） ─────────────────────────────── */
 .dock{
-  position:fixed;left:0;right:var(--rail);bottom:0;z-index:20;
+  position:absolute;left:0;right:var(--rail);bottom:0;z-index:20;
   height:calc(var(--dock) + var(--sab));
   padding:0 12px var(--sab) var(--bind);
   display:flex;align-items:center;gap:8px;
@@ -291,7 +294,7 @@ textarea.inp{font-family:var(--serif);font-size:15px;line-height:1.65;letter-spa
 .sync.err{color:var(--vermilion)}
 
 /* ── 抽頁（sheet）：以打孔邊為軸的兩格步進，不淡入 ────────── */
-.sheetwrap{position:fixed;left:0;right:0;top:0;height:100dvh;z-index:60;display:none}
+.sheetwrap{position:fixed;left:0;right:0;top:0;height:var(--vh, 100dvh);z-index:60;display:none}
 .sheetwrap.open{display:block}
 .scrim{position:absolute;inset:0;background:rgba(0,0,0,.42)}
 .sheet{
@@ -349,7 +352,7 @@ textarea.inp{font-family:var(--serif);font-size:15px;line-height:1.65;letter-spa
 .imgs img{height:96px;border:1px solid var(--rule2);border-radius:9px;background:rgba(0,0,0,.06)}
 
 /* ── 進場／旅程列表 ─────────────────────────────────────── */
-.gate{position:fixed;left:0;right:0;top:0;height:100dvh;z-index:70;background:var(--paper);overflow-y:auto;display:none;
+.gate{position:fixed;left:0;right:0;top:0;height:var(--vh, 100dvh);z-index:70;background:var(--paper);overflow-y:auto;display:none;
   padding:calc(env(safe-area-inset-top) + 18px) 13px calc(var(--sab) + 20px)}
 .gate.on{display:block}
 .brand{color:var(--ink2);font-family:var(--mono);letter-spacing:.3em;
@@ -424,14 +427,13 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
 <div id="app" class="hide">
   <main class="plate" id="plate"></main>
   <nav class="rail" id="rail" aria-label="日別分頁"></nav>
-</div>
-
-<div class="dock hide" id="dock">
+  <div class="dock hide" id="dock">
   <button class="btn" id="btnEdit" title="排序、改路程、刪卡片">編輯</button>
   <button class="btn fill" id="btnAdd">＋ 新增</button>
   <button class="btn" id="btnSet" title="旅程設定">設定</button>
   <div class="grow"></div>
   <button class="sync" id="syncBtn" title="同步狀態"></button>
+  </div>
 </div>
 
 
@@ -2100,8 +2102,24 @@ function sheetTrip() {
 }
 
 /* ═══ 啟動 ═══════════════════════════════════════════════════ */
+/* 實測可見高度，寫成 --vh。三個事件都要聽：
+   resize 是轉向與鍵盤，visualViewport 的 resize 是工具列收合，
+   scroll 是 iOS 把工具列推走的那一段過渡。 */
+function fitViewport() {
+  const vv = window.visualViewport;
+  const h = Math.round(vv ? vv.height : window.innerHeight);
+  if (h > 0) document.documentElement.style.setProperty('--vh', h + 'px');
+}
+
 async function boot() {
-  applyBoard(HUES[3]);
+  fitViewport();
+  addEventListener('resize', fitViewport);
+  addEventListener('orientationchange', () => setTimeout(fitViewport, 250));
+  if (window.visualViewport) {
+    visualViewport.addEventListener('resize', fitViewport);
+    visualViewport.addEventListener('scroll', fitViewport);
+  }
+  applyBoard(HUES[0]);
   await openDB();
   await renderGate();
 

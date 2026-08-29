@@ -117,7 +117,7 @@ const BUILTINS = new Set(['console','Math','JSON','Object','Array','String','Num
   'Promise','Set','Map','WeakMap','parseInt','parseFloat','isFinite','isNaN','encodeURIComponent',
   'decodeURIComponent','btoa','atob','setTimeout','clearTimeout','setInterval','clearInterval','fetch',
   'alert','confirm','prompt','requestAnimationFrame','matchMedia','addEventListener','removeEventListener',
-  'indexedDB','crypto','Uint8Array','TextEncoder','TextDecoder','Error','RegExp','document','window',
+  'indexedDB','visualViewport','crypto','Uint8Array','TextEncoder','TextDecoder','Error','RegExp','document','window',
   'Blob','File','FileReader','URL','Image','FormData','AbortController','performance',
   'navigator','localStorage','structuredClone','queueMicrotask']);
 const called = new Set();
