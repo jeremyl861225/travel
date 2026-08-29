@@ -59,9 +59,11 @@
   --display:"HelveticaNeue-CondensedBold","Avenir Next Condensed",
             "Helvetica Neue",Helvetica,"PingFang TC",sans-serif;
   --serif:Palatino,"Songti TC",serif;
-  /* ui-monospace 是 iOS 上取得 SF Mono 的唯一正確寫法，直接寫 "SF Mono" 抓不到。
-     iOS 沒有任何 CJK 等寬字型，所以等寬容器裡只放拉丁、數字、代號。 */
-  --mono:ui-monospace,Menlo,monospace;
+  /* 數字與英文改用 Avenir Next（iOS/macOS 內建）。它不是等寬字，
+     時刻的直豎對齊改靠 tabular-nums——那個特性只讓「數字」等寬，
+     英文字母仍是正常字寬，所以比 SF Mono 開闊也更耐看。
+     中文遇到它一樣會落到蘋方，跟原本一樣。 */
+  --mono:"Avenir Next",Avenir,"Helvetica Neue",sans-serif;
 
   --r:8px; --r2:5px;        /* 圓角：控制元件比卡片再小一階 */
   --step:90ms;              /* 唯一的動作長度 */
@@ -83,6 +85,8 @@ html,body{height:100%;overflow:hidden;overscroll-behavior:none}
 body{
   font-family:var(--sans); background:var(--paper); color:var(--ink);
   font-size:15px; line-height:1.45; overscroll-behavior:none;
+  /* 全站數字等寬對齊；只有襯線內文回到比例數字，那裡對齊不重要、好看比較重要 */
+  font-variant-numeric:tabular-nums; font-feature-settings:"tnum" 1;
   -webkit-font-smoothing:antialiased;
 }
 button,input,select,textarea{font:inherit;color:inherit;background:none;border:none}
@@ -326,6 +330,7 @@ textarea.inp{font-family:var(--serif);font-size:15px;line-height:1.65;letter-spa
 .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 /* 拉丁的 1.5 對繁中太緊，內文要 1.75–1.85 */
 .prose{font-family:var(--serif);font-size:14.5px;line-height:1.62;
+  font-variant-numeric:normal;font-feature-settings:normal;
   hanging-punctuation:allow-end}
 
 /* 類別選擇：刻印＋文字，不靠顏色分辨 */
