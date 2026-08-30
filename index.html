@@ -451,6 +451,11 @@ textarea.inp{font-family:var(--serif);font-size:15px;line-height:1.65;letter-spa
 }
 .sheethead h2{font-family:var(--sans);font-size:17px;font-weight:600;letter-spacing:-.01em;flex:1;min-width:0;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 主要動作放在標題列右邊，跟「關閉」同一條基線、同一個 31px 高度
+   （.btn.fill 的框線只是變透明，盒子沒變，兩顆才切得齊）。
+   :empty 收起來，沒有動作的抽頁不會多出一段間距。 */
+.sheetact{flex:0 0 auto;display:flex;align-items:center;gap:8px}
+.sheetact:empty{display:none}
 .sheetbody{padding:14px}
 /* 手冊的四欄格線在窄螢幕收成一欄，標籤吊在邊欄 */
 .fld{display:grid;grid-template-columns:70px 1fr;gap:9px;align-items:start;margin-bottom:10px}
@@ -592,6 +597,7 @@ FINISH: unreviewed and undocumented is unfinished; this build ends with the fini
   <div class="scrim" id="sheetScrim"></div>
   <div class="sheet" id="sheet" role="dialog" aria-modal="true">
     <div class="sheethead"><h2 id="sheetTitle"></h2>
+      <span class="sheetact" id="sheetAct"></span>
       <button class="btn" id="sheetClose">關閉</button></div>
     <div class="sheetbody" id="sheetBody"></div>
   </div>
@@ -669,7 +675,7 @@ let HUES = hueSet(6);                    // openTrip() 會依實際天數重算
 /* 建置代號。手機上「改了但看起來沒變」十之八九是舊快取，
    在設定裡把這個字串印出來，一眼就知道手上這份是不是新的。
    改版時跟著 sw.js 的 CACHE 一起跳號。 */
-const BUILD = '2026-08-30 · v26';
+const BUILD = '2026-08-30 · v27';
 const VERMILION = '#D62D14';
 /* 已經過去的分頁用的極淺灰。比紙略深一點點，形狀還在但退到背景去。 */
 const PAST_TAB = '#D9D6CE';
@@ -1268,18 +1274,28 @@ async function ensureLegs(d, force) {
   const departAtOf = {};
   sched.forEach(x => { departAtOf[x.card.id] = x.depart; });
 
+  /* Routes API 在日本完全沒有大眾運輸班次資料——實測東京、大阪、仙台、
+     成田八組全部回 NO_ROUTE，同樣形狀的請求在台北、首爾、倫敦、紐約、
+     里斯本都有結果。所以這不是偶發，是整個地區沒有；只要這趟旅程出現過
+     一次，就別再問了，每問一次都是一筆算進額度、而且必定失敗的請求。
+     force（手動重算、排順路）仍然會再試一次，換了國家才不會被卡住。 */
+  const transitDead = !force && S.cards.some(
+    c => c.data.leg && c.data.leg.mode === 'transit' && c.data.leg.noRoute);
+
   const jobs = [];
   for (let i = 0; i < list.length - 1; i++) {
     const a = list[i], b = list[i + 1];
     const pa = a.data.place, pb = b.data.place;
     if (!pa || !pb || pa.lat == null || pb.lat == null) continue;
     const mode = (a.data.leg && a.data.leg.mode) || S.trip.defaultMode || 'drive';
+    if (transitDead && mode === 'transit') continue;
     const departAt = departISO(d, departAtOf[a.id], pa);
     /* 出發時刻只取到半小時，否則每動一下順序就整天重算。
        真正會改變路況的是「早上還是傍晚」，不是差那八分鐘。 */
     const slot = departAt ? departAt.slice(0, 13) + (departAt.slice(14, 16) < '30' ? 'A' : 'B') : '-';
     const sig = [pa.lat, pa.lng, pb.lat, pb.lng, mode, slot].join('|');
-    if (!force && a.data.leg && a.data.leg.min != null && a.data.leg.sig === sig) continue;
+    if (!force && a.data.leg && a.data.leg.sig === sig &&
+        (a.data.leg.min != null || a.data.leg.noRoute)) continue;
     jobs.push({ card:a, sig, mode, departAt,
       origin:{ lat:pa.lat, lng:pa.lng }, destination:{ lat:pb.lat, lng:pb.lng } });
   }
@@ -1290,7 +1306,17 @@ async function ensureLegs(d, force) {
                              mode:j.mode, departAt:j.departAt || undefined })),
     });
     for (let i = 0; i < jobs.length; i++) {
-      const r = res.legs[i]; if (!r || r.seconds == null) continue;
+      const r = res.legs[i];
+      if (!r || r.seconds == null) {
+        /* 問過、而且 Google 說沒有。把這個結果也存起來，否則
+           min 永遠是 null、sig 永遠對不上，每次重繪都會再問一輪。 */
+        const cur = jobs[i].card.data.leg;
+        if (!cur || !cur.noRoute || cur.sig !== jobs[i].sig) {
+          jobs[i].card.data.leg = { mode:jobs[i].mode, min:null, noRoute:true, sig:jobs[i].sig };
+          await touch(jobs[i].card);
+        }
+        continue;
+      }
       jobs[i].card.data.leg = { mode:jobs[i].mode, min:Math.round(r.seconds / 60),
                                 meters:r.meters, sig:jobs[i].sig, at:new Date().toISOString(),
                                 traffic: !!jobs[i].departAt };
@@ -2018,6 +2044,12 @@ function renderPlate() {
           if (shut) bits.push(shut + ' 站到的時候沒開');
           return '<div class="dsub" style="color:var(--vermilion)">' + bits.join('　') + '</div>';
         })() +
+        /* 大眾運輸在有些地區 Google 根本不給班次（日本全境如此）。
+           那些數字永遠是估的，等再久也不會變準——與其讓人以為是量到的，
+           不如講清楚，並指出去哪裡查得到真的。只講一次，不要每一段都掛。 */
+        (sched.some(x => x.leg && x.leg.noRoute)
+          ? '<div class="dsub">大眾運輸的時間是估的：Google 查不到這一帶的班次。點路程可以開地圖看實際班次。</div>'
+          : '') +
         (firstPin ? '<div class="dsub" style="color:' + (firstPin.pinDrift > 0 ? 'var(--vermilion)' : 'var(--ink)') + '">' +
           '距 ' + min2hm(firstPin.pinTarget) + ' ' + esc(firstPin.pinName) + '：' +
           (firstPin.pinDrift > 0 ? '已慢 ' + durTxt(firstPin.pinDrift) : '尚有餘裕 ' + durTxt(-firstPin.pinDrift)) +
@@ -2099,9 +2131,23 @@ function renderPlate() {
    直線距離 × 1.58 ＝ 實際路程，平均時速 64 km/h。
    誤差中位數 6.6 分、最大 20 分——夠用來排順序與抓大概，
    但不能當成準確的到達時刻。所以估算值一律標「約」。 */
+/* 大眾運輸這一組是 2026-08-30 重新量出來的，因為原本的（32 km/h 定速）
+   把成田機場到六本木算成 174 分，實際是 86 分。錯的不是係數大小，是形狀：
+   大眾運輸的門到門速度會隨距離上升——短程整段被走路與等車吃掉，
+   長程一上快速線就拉開。定速模型於是短程還準、長程一路高估。
+
+   拿東京圈十一組實際查詢的最短班次回歸（直線距離 → 分鐘）：
+     1.4 km→14　3.3→32　6.1→19　7.4→36　11.0→17　14.7→33
+     27.3→24　44.9→61　56.8→66　87.3→105　115.7→131
+   得 t ≈ 16 + 0.99 × 直線公里，也就是「16 分固定開銷 ＋ 每公里一分鐘」。
+   誤差中位數 4 分、最大 18 分（都落在短程，那裡的時間本來就由轉乘決定，
+   不是由距離決定）。舊模型在同一組資料上最大差 193 分。
+
+   兩個已知的邊界：超過 150 km 若有新幹線會嚴重高估（東京→仙台 303 km
+   實際只要 99 分），而這種段落使用者本來就會自己釘時間。 */
 const LEG_MODEL = {
   drive:   { detour: 1.58, kmh: 64, overhead: 4 },   // overhead：停車、上下車
-  transit: { detour: 1.45, kmh: 32, overhead: 10 },  // overhead：等車
+  transit: { detour: 1.15, kmh: 70, overhead: 16 },  // overhead：走到車站、等車、轉乘
   walk:    { detour: 1.25, kmh: 4.6, overhead: 1 },
   bicycle: { detour: 1.30, kmh: 13, overhead: 2 },
 };
@@ -2132,7 +2178,11 @@ function legOf(a, b) {
       return stored;
     }
   }
-  return estimateLeg(a, b, mode);
+  const est = estimateLeg(a, b, mode);
+  /* noRoute 是顯示用的提示：Google 對這一段給不出答案，所以畫面上的數字
+     一定是估的，而且不會因為再等一下就變準。 */
+  if (est && stored && stored.noRoute) est.noRoute = true;
+  return est;
 }
 
 /* ═══ 自動排順路 ═══════════════════════════════════════════
@@ -2678,8 +2728,12 @@ function renderSync() {
 <script>
 'use strict';
 /* ═══ 抽頁 ═══════════════════════════════════════════════════ */
-function openSheet(title, html, after) {
+/* head 是標題列右邊的動作鍵。表單一長，放在最底下的「儲存」要捲到底
+   才按得到；主要動作固定在標題列（sticky）才隨時按得到。
+   一定要在 after() 之前塞進 DOM，綁事件才找得到。 */
+function openSheet(title, html, after, head) {
   $('#sheetTitle').textContent = title;
+  $('#sheetAct').innerHTML = head || '';
   $('#sheetBody').innerHTML = html;
   $('#sheetWrap').classList.add('open');
   if (after) after();
@@ -3076,8 +3130,7 @@ function sheetEdit(c) {
     '<div class="row" style="margin-bottom:14px">' +
     '<button class="btn" id="eRefetch">重新抓 Google 資料</button>' +
     (d.place ? '<button class="btn" id="eClearPlace">清除地點資料</button>' : '') + '</div>' +
-    '<button class="btn fill wide" id="eSave">儲存</button>' +
-    '<button class="btn wide" id="eDel" style="margin-top:9px;color:var(--vermilion);' +
+    '<button class="btn wide" id="eDel" style="color:var(--vermilion);' +
     'border-color:var(--vermilion)">刪除這張卡</button>',
     () => {
       let cat = d.catId;
@@ -3124,7 +3177,8 @@ function sheetEdit(c) {
         if (S.day >= 0) ensureLegs(S.day);
         render();
       };
-    });
+    },
+    '<button class="btn fill" id="eSave">儲存</button>');
 }
 
 function sheetLeg(c) {
