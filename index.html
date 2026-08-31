@@ -675,7 +675,7 @@ let HUES = hueSet(6);                    // openTrip() 會依實際天數重算
 /* 建置代號。手機上「改了但看起來沒變」十之八九是舊快取，
    在設定裡把這個字串印出來，一眼就知道手上這份是不是新的。
    改版時跟著 sw.js 的 CACHE 一起跳號。 */
-const BUILD = '2026-08-30 · v27';
+const BUILD = '2026-08-30 · v28';
 const VERMILION = '#D62D14';
 /* 已經過去的分頁用的極淺灰。比紙略深一點點，形狀還在但退到背景去。 */
 const PAST_TAB = '#D9D6CE';
@@ -1563,6 +1563,23 @@ function tripState(t) {
   return '進行中';
 }
 
+/* 點開 PWA 直接進上次那一趟，不要每次都在旅程列表前面停一下。
+   只有「這台裝置記住過金鑰」才自動進——沒記住就得問密碼，
+   每次點開都跳一個密碼框比停在列表更糟。
+   要在 renderGate() 之前呼叫，否則列表會先閃一下。 */
+async function resumeLastTrip() {
+  const code = await kvGet('lastTrip', null);
+  if (!code) return false;
+  const t = await dbGet('trips', code);
+  if (!t || !t.keyRaw) return false;
+  try {
+    S.key = await crypto.subtle.importKey('raw', t.keyRaw, { name:'AES-GCM' }, true, ['encrypt','decrypt']);
+  } catch (e) { S.key = null; return false; }   // 金鑰壞了就退回列表
+  S.trip = t; S.auth = t.authHash;
+  await enterTrip();
+  return true;
+}
+
 async function askUnlock(code) {
   const t = await dbGet('trips', code);
   if (!t) return;
@@ -1669,8 +1686,17 @@ async function enterTrip() {
   const rb = await kvGet('rebase');
   S.rebase = (rb && rb.day === todayIndex() && rb.on === todayISO()) ? rb : null;
   if (rb && !S.rebase) await kvSet('rebase', null);
+  dayMemo = null;
+  /* 人在旅程期間內，唯一想看的就是今天。不在期間內（還沒出發、或已經回來）
+     才回到上次停的那一頁——那可能是候選口袋（-1），所以下界是 -1 不是 0。 */
   const ti = todayIndex();
-  S.day = ti >= 0 ? ti : 0;
+  if (ti >= 0) S.day = ti;
+  else {
+    const last = await kvGet('lastDay', null);
+    S.day = (last && last.code === S.trip.code &&
+             last.day >= -1 && last.day < S.trip.days) ? last.day : 0;
+  }
+  await kvSet('lastTrip', S.trip.code);
   S.open = null;
   $('#gate').classList.remove('on');
   $('#app').classList.remove('hide');
@@ -1683,6 +1709,10 @@ async function enterTrip() {
 }
 function leaveTrip() {
   clearInterval(syncTimer);
+  /* 自己按了返回＝「上次使用的畫面」就是旅程列表。清掉記號，下次點開停在列表；
+     這也是換旅程的唯一出口，不然自動進入會把人鎖在同一趟裡。 */
+  kvSet('lastTrip', null);
+  dayMemo = null;
   S.trip = null; S.key = null; S.cards = []; S.weather = {};
   $('#app').classList.add('hide');
   $('#dock').classList.add('hide');
@@ -1769,8 +1799,21 @@ function gmDay(list, mode) {
 const nowMin = () => { const d = new Date(); return d.getHours() * 60 + d.getMinutes(); };
 
 /* ═══ 畫面 ═══════════════════════════════════════════════════ */
+/* 上次看到哪一頁。行程還沒開始（或已經結束）時，點開要回到這裡，
+   而不是一律丟到第一天。寫進 kv 而不是記憶體，因為 PWA 會被系統整個收掉。
+   只在真的變了才寫——render() 一次操作可能跑好幾遍。 */
+let dayMemo = null;
+function rememberDay() {
+  if (!S.trip) return;
+  const v = S.trip.code + '|' + S.day;
+  if (v === dayMemo) return;
+  dayMemo = v;
+  kvSet('lastDay', { code:S.trip.code, day:S.day });
+}
+
 function render() {
   if (!S.trip) return;
+  rememberDay();
   /* 色階要跟天數綁在一起：改天數的時候整條漸層要重新分配，
      不然加了一天之後最後一天就不是 L5 了。 */
   HUES = hueSet(S.trip.days || 1);
@@ -3482,7 +3525,7 @@ async function boot() {
   }
   applyBoard(HUES[0]);
   await openDB();
-  await renderGate();
+  if (!await resumeLastTrip()) await renderGate();
 
   $('#btnAdd').onclick = sheetAdd;
   $('#btnSet').onclick = sheetTrip;
@@ -3498,8 +3541,19 @@ async function boot() {
 
   addEventListener('online',  () => { S.online = true;  renderSync(); syncNow(true); });
   addEventListener('offline', () => { S.online = false; renderSync(); });
+  /* iOS 的 PWA 多半不是重新開機而是從背景叫回來，所以「點開跳到今天」
+     不能只做在 boot()。但也不能每次回到前景就跳——那會把人從他自己
+     翻開的那一天硬拉走。只在日期真的翻頁時才跳。 */
+  let lastSeenDate = todayISO();
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible' && S.trip) { syncNow(true); render(); }
+    if (document.visibilityState !== 'visible' || !S.trip) return;
+    const now = todayISO();
+    if (now !== lastSeenDate) {
+      lastSeenDate = now;
+      const ti = todayIndex();
+      if (ti >= 0 && ti !== S.day) { S.day = ti; S.open = null; }
+    }
+    syncNow(true); render();
   });
 
   if ('serviceWorker' in navigator) {
