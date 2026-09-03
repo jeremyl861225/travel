@@ -85,7 +85,12 @@
   --mono:"Avenir Next",Avenir,"Helvetica Neue",sans-serif;
 
   --r:8px; --r2:5px;        /* 圓角：控制元件比卡片再小一階 */
-  --step:90ms;              /* 唯一的動作長度 */
+  --step:90ms;              /* 元件級動作：兩格步進 */
+  /* 翻頁是唯一的例外，而且是幾何上的例外不是質感上的：一整張賽璐珞頁
+     轉九十度，走過的距離是其他動作的十倍以上，同一個 90ms 兩格會只剩
+     「閃一下」。給它兩倍長、三格——仍然是步進，仍然沒有緩動曲線。 */
+  --turn:180ms;
+  --stagger:28ms;           /* 時刻連鎖重算時每一列的間隔 */
   --rail:44px;              /* 書口分頁鐵 */
   --bind:10px;              /* 左緣留白 */
   --dock:46px;
@@ -98,7 +103,7 @@
 @media (display-mode: standalone), (display-mode: fullscreen){
   :root{ --sab:env(safe-area-inset-bottom); }
 }
-@media (prefers-reduced-motion: reduce){ :root{ --step:1ms } }
+@media (prefers-reduced-motion: reduce){ :root{ --step:1ms; --turn:1ms; --stagger:0ms } }
 
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 /* iOS Safari 的 inset:0 指的是版面視窗，比看得到的區域高；用 dvh 才貼齊 */
@@ -118,7 +123,8 @@ em{font-style:normal;color:var(--ink);letter-spacing:.03em}
 button{cursor:pointer}
 a{color:inherit}
 
-/* 這個世界沒有緩動曲線。所有變化都是 90ms 的兩格步進。 */
+/* 這個世界沒有緩動曲線。所有變化都是步進的——元件是 90ms 兩格，
+   翻頁是 180ms 三格。沒有第三種。 */
 .step{transition:transform var(--step) steps(2),opacity var(--step) steps(2)}
 
 /* ── 版面骨架 ───────────────────────────────────────────── */
@@ -136,7 +142,50 @@ a{color:inherit}
   background:var(--paper); border-radius:11px;
   box-shadow:0 0 0 1px var(--rule2), 0 1px 3px rgba(27,26,22,.10), 0 6px 16px rgba(27,26,22,.06);
   overflow:hidden;
+  /* 翻頁的舞台。沒有 perspective 的 rotateY 只是把頁面壓扁，
+     那讀起來是「消失」不是「翻過去」。position:relative 是給 .turner 的。 */
+  position:relative; perspective:1400px; perspective-origin:left center;
 }
+
+/* ── 翻頁 ───────────────────────────────────────────────────
+   分頁鐵在右邊＝這本活頁本裝訂在左邊，所以頁面繞左緣轉，不繞中線。
+   往後翻：舊的那一頁沿裝訂邊翻走，新的一頁本來就在下面（.turner 動）。
+   往前翻：舊的留在原地，新的一頁翻回來蓋上去（#plate 動）。
+   兩邊都只有一層在轉，因為另一層是靜止的實頁。 */
+.turner{
+  position:absolute; left:0; top:0; bottom:0; right:var(--rail);
+  background:var(--paper); overflow:hidden; pointer-events:none;
+  transform-origin:left center; will-change:transform;
+  /* 拓本蓋在活頁上（往後翻＝舊頁在上面翻走），但往前翻的時候上下要對調：
+     新的那一頁是被翻回來蓋上去的，得壓過留在原地的舊頁。
+     只有這兩個 z-index，方向由誰拿到 .turning 決定。 */
+  z-index:2;
+  /* 翻起來的那一側要離開紙面，用一道往裝訂邊收的暗來表示，
+     不是加陰影——這個世界的層次一律靠線與明度，沒有 box-shadow。 */
+  background-image:linear-gradient(90deg, rgba(27,26,22,.10), rgba(27,26,22,0) 34%);
+}
+.turner > .plate{position:absolute; left:0; top:0; width:100%; overflow:visible}
+.plate.turning{transform-origin:left center; will-change:transform; background:var(--paper); z-index:3}
+
+/* 三格要平均分在「看得到的寬度」上，不是分在角度上。角度是線性的，投影不是：
+   帶 perspective 的時候 -12° 甚至比 0° 還寬一點（近的那一邊朝觀看者過來），
+   要到 -56° 投影寬度才掉到七成。照角度平均切三格的結果是前三分之二完全
+   看不出在動——實測 -28.7° 的投影寬度是 102%。
+   所以格子按實測的投影寬度取：100% → 70%(-56°) → 40%(-72°) → 14%(-84°)。
+   step-end 讓每一格真的停住，中間不插值——這一頁沒有中間狀態，只有三張定格。 */
+@keyframes sheetaway{
+  0%{transform:rotateY(-56deg)}
+  33%{transform:rotateY(-72deg)}
+  66%,100%{transform:rotateY(-84deg)}
+}
+@keyframes sheetback{
+  0%{transform:rotateY(-84deg)}
+  33%{transform:rotateY(-72deg)}
+  66%{transform:rotateY(-56deg)}
+  100%{transform:none}
+}
+.turner.away{animation:sheetaway var(--turn) step-end both}
+.plate.turning{animation:sheetback var(--turn) step-end both}
 .plate{
   position:relative; overflow-y:auto; overflow-x:hidden;
   -webkit-overflow-scrolling:touch;
@@ -210,6 +259,13 @@ a{color:inherit}
   display:flex;flex-direction:column;gap:2px;align-items:center;
 }
 .ltime{font-family:var(--mono);font-size:15.5px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1.1}
+/* 動一張卡，後面每一張的抵達時刻都會重算——這是這支 app 唯一真正的賣點，
+   而它一直是在無聲中發生的。只讓「真的變了」的那幾格翻新值，由上而下，
+   看得出是一條連鎖而不是整頁重畫。--i 由渲染端給，夾在 9 以內，
+   所以最長的一條也只有 250ms。 */
+@keyframes timeroll{ from{transform:translateY(-5px);opacity:.3} to{transform:none;opacity:1} }
+.ltime.roll{animation:timeroll var(--step) steps(2) both;
+  animation-delay:calc(var(--i,0) * var(--stagger))}
 .lstay{font-family:var(--mono);font-size:10.5px;opacity:.78;letter-spacing:.02em;line-height:1.35}
 .lstay.pin{opacity:1;font-weight:600}
 .lbody{padding:8px 7px 9px 10px;min-width:0;display:flex;gap:9px;align-items:flex-start}
@@ -300,7 +356,10 @@ a{color:inherit}
 .strip b{position:absolute;top:-3px;bottom:-3px;width:1.5px;background:var(--ink);opacity:.55}
 /* 「現在」：整條時間軸上唯一會動的東西，給它朱紅與全高，跟膠囊分開讀。 */
 .strip u{position:absolute;top:-5px;bottom:-5px;width:2px;background:var(--vermilion);
-  text-decoration:none;border-radius:1px}
+  text-decoration:none;border-radius:1px;
+  /* 這條線每分鐘自己走一格。過渡只是為了讓那一格「被看見是走過去的」，
+     一分鐘的位移本來就只有零點幾個百分點。 */
+  transition:left var(--step) steps(2)}
 .striplab{display:flex;justify-content:space-between;margin-top:4px;
   font-family:var(--mono);font-size:9.5px;letter-spacing:.03em;color:var(--ink3)}
 .striplab span:nth-child(2){opacity:.75}
@@ -483,6 +542,10 @@ textarea.inp{font-family:var(--serif);font-size:15px;line-height:1.65;letter-spa
 /* 展開後的欄位切齊上面那條分界線：標籤佔的就是時刻欄，
    內容從分界線之後開始，整張卡只有一條垂直的視覺線。 */
 .detail{border-top:1px solid var(--accent-rule);padding:0 12px 12px 0}
+/* 只在「剛剛被打開」那一次落下。卡片每次重繪都會重跑動畫是最常見的錯，
+   所以是否加上 .drop 由渲染端判斷，不是掛在 .detail 上。 */
+@keyframes leafdrop{ from{transform:translateY(-6px);opacity:0} to{transform:none;opacity:1} }
+.detail.drop{animation:leafdrop var(--step) steps(2) both}
 .detail .blk{display:grid;grid-template-columns:var(--tcol) 1fr;gap:0;padding-top:12px}
 .detail .blk > .lab{padding-left:5px;text-align:center}
 /* 介紹與動作不掛標籤，段落直接鋪滿 */
@@ -675,7 +738,7 @@ let HUES = hueSet(6);                    // openTrip() 會依實際天數重算
 /* 建置代號。手機上「改了但看起來沒變」十之八九是舊快取，
    在設定裡把這個字串印出來，一眼就知道手上這份是不是新的。
    改版時跟著 sw.js 的 CACHE 一起跳號。 */
-const BUILD = '2026-08-30 · v28';
+const BUILD = '2026-09-03 · v29';
 const VERMILION = '#D62D14';
 /* 已經過去的分頁用的極淺灰。比紙略深一點點，形狀還在但退到背景去。 */
 const PAST_TAB = '#D9D6CE';
@@ -1703,12 +1766,14 @@ async function enterTrip() {
   $('#dock').classList.remove('hide');
   render();
   startSyncLoop();
+  startNowTick();
   syncNow(true);
   if (S.day >= 0) ensureHours(S.day);
   if (!S.trip.nick) askNick();
 }
 function leaveTrip() {
   clearInterval(syncTimer);
+  stopNowTick();
   /* 自己按了返回＝「上次使用的畫面」就是旅程列表。清掉記號，下次點開停在列表；
      這也是換旅程的唯一出口，不然自動進入會把人鎖在同一趟裡。 */
   kvSet('lastTrip', null);
@@ -1811,15 +1876,74 @@ function rememberDay() {
   kvSet('lastDay', { code:S.trip.code, day:S.day });
 }
 
+/* ═══ 翻頁 ═══════════════════════════════════════════════════
+   分頁鐵在右邊，所以這本活頁本裝訂在左邊——頁面繞左緣轉，不繞中線。
+   候選口袋在分頁鐵的最下面，也就是排在最後一天之後，方向照這個順序算。 */
+const railIdx = d => (d < 0 ? (S.trip ? S.trip.days : 99) : d);
+let shownDay = null, turning = false;
+const REDUCED = matchMedia('(prefers-reduced-motion: reduce)');
+
+/* 把現在這一頁原樣拓下來，疊在原處。捲動位置用位移補回去——
+   拓本不能捲動，不補的話翻走的會是頁首而不是你正在看的段落。 */
+function liftSheet() {
+  const p = $('#plate');
+  const g = document.createElement('div');
+  g.className = 'turner';
+  g.setAttribute('aria-hidden', 'true');
+  const inner = p.cloneNode(true);
+  inner.removeAttribute('id');
+  inner.style.transform = 'translateY(' + (-p.scrollTop) + 'px)';
+  g.appendChild(inner);
+  /* 當日色是 :root 上的變數，applyBoard() 馬上就要換成新那天的。
+     把現在這一組釘在拓本上（自訂屬性會往下繼承，等於遮蔽 :root），
+     翻走的那一頁才會帶著自己的顏色離開——不然它會在半空中變色。 */
+  const cs = getComputedStyle(document.documentElement);
+  ['--accent','--accent-ink','--accent-line','--accent-edge','--accent-rule','--btn','--btn-ink']
+    .forEach(k => g.style.setProperty(k, cs.getPropertyValue(k)));
+  $('.case').appendChild(g);
+  void g.offsetWidth;     // 起點要先真的生效過，否則過渡不會跑
+  return g;
+}
+
+function turnSheet(dir, ghost) {
+  const plate = $('#plate');
+  turning = true;
+  /* 往後翻：動的是拓本（舊頁翻走），新的一頁本來就在下面。
+     往前翻：拓本靜靜留在原地當作舊頁，動的是新的一頁（翻回來蓋上）。
+     任何一邊都只有一層在轉。 */
+  if (dir > 0) ghost.classList.add('away');
+  else plate.classList.add('turning');
+
+  const ms = parseFloat(getComputedStyle(document.documentElement)
+    .getPropertyValue('--turn')) || 180;
+  const done = () => {
+    ghost.remove();
+    plate.classList.remove('turning');
+    turning = false;
+  };
+  /* animationend 為主、計時器保底：頁面在背景時動畫不會跑完，
+     沒有保底的話拓本會一直蓋在上面，回到前景就變成整頁點不動。 */
+  (dir > 0 ? ghost : plate).addEventListener('animationend', done, { once:true });
+  setTimeout(done, ms + 120);
+}
+
 function render() {
   if (!S.trip) return;
   rememberDay();
+  /* 翻頁只在「真的換了一天」時發生。render() 被很多事情呼叫
+     （同步回來、編輯模式、時刻重算），那些都不該翻。 */
+  const dir = (shownDay != null && shownDay !== S.day && !turning && !REDUCED.matches)
+    ? (railIdx(S.day) > railIdx(shownDay) ? 1 : -1) : 0;
+  const ghost = dir ? liftSheet() : null;
+  shownDay = S.day;
+
   /* 色階要跟天數綁在一起：改天數的時候整條漸層要重新分配，
      不然加了一天之後最後一天就不是 L5 了。 */
   HUES = hueSet(S.trip.days || 1);
   $('#app').classList.toggle('edit', S.edit);
   applyBoard(hueOf(S.day));
   renderRail(); renderPlate(); renderSync();
+  if (dir) turnSheet(dir, ghost);
 }
 
 function renderRail() {
@@ -1910,7 +2034,9 @@ function leafHTML(r, i, flags) {
   return '<article class="' + cls + '" data-card="' + c.id + '">' +
     '<div class="lrow">' +
       '<div class="lmar" data-grip="' + c.id + '">' +
-        '<div class="ltime">' + min2hm(r.arrive) + '</div>' +
+        '<div class="ltime' + (flags.roll >= 0 ? ' roll' : '') + '"' +
+          (flags.roll >= 0 ? ' style="--i:' + flags.roll + '"' : '') + '>' +
+          min2hm(r.arrive) + '</div>' +
         '<div class="lstay">停 ' + durMin(d.stayMin) + '</div>' +
         (d.pinTime ? '<div class="lstay pin">釘 ' + esc(d.pinTime) + '</div>' : '') +
         (S.edit ? '<span class="grip"></span>' : '') +
@@ -1925,13 +2051,13 @@ function leafHTML(r, i, flags) {
       (hasMap(c) ? '<a class="lmap" href="' + gmPlace(c) + '" target="_blank" rel="noopener" ' +
         'aria-label="在 Google 地圖開啟">' + mark('map') + '</a>' : '<span class="lmap"></span>') +
     '</div>' + err +
-    (S.open === c.id ? detailHTML(c, r) : '') +
+    (S.open === c.id ? detailHTML(c, r, flags.drop) : '') +
   '</article>';
 }
 
-function detailHTML(c, r) {
+function detailHTML(c, r, drop) {
   const d = c.data, p = d.place || {};
-  let h = '<div class="detail">';
+  let h = '<div class="detail' + (drop ? ' drop' : '') + '">';
   /* 「我在這裡」擺在展開後的第一塊。它原本在最底下的動作列，
      要滑過介紹、營業時間、地址、連結才看得到——那是開車時要按的東西，
      埋在那個位置等於沒有。只有今天那一天才出現。 */
@@ -2015,11 +2141,49 @@ function detailHTML(c, r) {
   return h + '</div>';
 }
 
+/* 今天：直接講「現在應該在哪」。行程表最沒用的時刻，
+   就是你人在路上卻要自己拿手指去比對哪一列。
+   抽成函式是因為它每分鐘要自己重畫一次，不能只在重繪整頁時才更新。 */
+function nowLineHTML(sched, d) {
+  if (d !== todayIndex() || !sched.length) return '';
+  const n = nowMin();
+  const at = sched.find(x => n >= x.arrive && n < x.depart);
+  /* 用跟時間軸上那根「現在」同一個朱紅的記號起頭，兩處是同一件事；
+     字色走 --ink（整頁最重），因為這是唯一會自己動、也唯一即時的一行。
+     警告色留給公休與撲空，不要兩件事都染紅。 */
+  const tick = '<i class="nowtick"></i>';
+  if (at) return '<div class="dnow">' + tick + '<span>現在 ' + min2hm(n) +
+    '　應該在 <b>' + esc(at.card.data.name || '') + '</b>' +
+    '<em class="nb">，還有 ' + durTxt(at.depart - n) + '</em></span></div>';
+  const nx = sched.find(x => x.arrive > n);
+  if (nx) return '<div class="dnow">' + tick + '<span>現在 ' + min2hm(n) +
+    '　在往 <b>' + esc(nx.card.data.name || '') + '</b>' +
+    '<em class="nb">，' + durTxt(nx.arrive - n) + '後到</em></span></div>';
+  return '<div class="dnow">' + tick + '<span>今天的行程已經結束</span></div>';
+}
+
+/* 上一次畫出來的抵達時刻，用來找出這一次「真的變了」的是哪幾張。
+   換一天的時候整頁都是新的，那不是重算，所以要比對是不是同一天。 */
+let platedDay = null, platedTimes = null, openedId = null;
+
 function renderPlate() {
   const plate = $('#plate');
   const d = S.day;
   const sched = d >= 0 ? computeSchedule(d) : dayCards(-1).map(c => ({ card:c, arrive:null, depart:null, late:0, hours:{unknown:true} }));
   S.sched = sched;
+  const roll = new Set();
+  if (platedDay === d && platedTimes) {
+    for (const r of sched) {
+      const was = platedTimes.get(r.card.id);
+      if (was != null && r.arrive != null && was !== r.arrive) roll.add(r.card.id);
+    }
+  }
+  platedDay = d;
+  platedTimes = new Map(sched.map(r => [r.card.id, r.arrive]));
+  /* 展開只在「剛剛被打開」那一次落下。同一張卡開著的時候還會因為
+     同步、時刻重算而重繪好幾次，每次都重播就變成閃爍。 */
+  const justOpened = !!S.open && S.open !== openedId;
+  openedId = S.open;
   const ti = todayIndex();
   const isToday = d === ti;
   let topIdx = -1;
@@ -2056,25 +2220,7 @@ function renderPlate() {
                 w.tmin + '–' + w.tmax + '°C</div>' : '') +
         /* 公休與撲空要在日首就看得到。點進每一張卡才發現「今天週一休館」
            已經太晚了——那是要換天的決定，不是換時間的決定。 */
-        /* 今天：直接講「現在應該在哪」。行程表最沒用的時刻，
-           就是你人在路上卻要自己拿手指去比對哪一列。 */
-        (() => {
-          if (d !== ti || !sched.length) return '';
-          const n = nowMin();
-          const at = sched.find(x => n >= x.arrive && n < x.depart);
-          /* 用跟時間軸上那根「現在」同一個朱紅的記號起頭，兩處是同一件事；
-             字色走 --ink（整頁最重），因為這是唯一會自己動、也唯一即時的一行。
-             警告色留給公休與撲空，不要兩件事都染紅。 */
-          const tick = '<i class="nowtick"></i>';
-          if (at) return '<div class="dnow">' + tick + '<span>現在 ' + min2hm(n) +
-            '　應該在 <b>' + esc(at.card.data.name || '') + '</b>' +
-            '<em class="nb">，還有 ' + durTxt(at.depart - n) + '</em></span></div>';
-          const nx = sched.find(x => x.arrive > n);
-          if (nx) return '<div class="dnow">' + tick + '<span>現在 ' + min2hm(n) +
-            '　在往 <b>' + esc(nx.card.data.name || '') + '</b>' +
-            '<em class="nb">，' + durTxt(nx.arrive - n) + '後到</em></span></div>';
-          return '<div class="dnow">' + tick + '<span>今天的行程已經結束</span></div>';
-        })() +
+        nowLineHTML(sched, d) +
         (() => {
           const shut = sched.filter(x => x.hours && x.hours.unknown === false && !x.hours.open).length;
           const off = list.filter(c => {
@@ -2128,9 +2274,12 @@ function renderPlate() {
       '</div>';
   }
 
+  let rolled = 0;
   sched.forEach((r, i) => {
     const past = d >= 0 && (d < ti || (isToday && topIdx >= 0 && i < topIdx) || (isToday && topIdx < 0));
-    h += leafHTML(r, i, { past });
+    /* 夾在 9 以內：一整天二十站也不該讓最後一格等半秒才翻。 */
+    const roi = roll.has(r.card.id) ? Math.min(rolled++, 9) : -1;
+    h += leafHTML(r, i, { past, roll:roi, drop: justOpened && S.open === r.card.id });
     if (i < sched.length - 1 && d >= 0) {
       const c = r.card, nx = sched[i + 1].card;
       const leg = r.leg || {};
@@ -2734,12 +2883,44 @@ function dayStrip(sched, d) {
   /* 今天才畫「現在」。它是這條時間軸上唯一會自己動的東西，
      所以用一條穿透全高的線，不跟膠囊搶。 */
   const n = nowMin();
+  S.stripSpan = { day:d, start, end };
   const now = (d === todayIndex() && n >= start && n <= end)
     ? '<u style="left:' + pct(n).toFixed(2) + '%"></u>' : '';
   return '<div class="strip">' + caps + pins + now + '</div>' +
     '<div class="striplab"><span>' + min2hm(start) + '</span>' +
     '<span>全程 ' + durTxt(span) + '</span>' +
     '<span>' + min2hm(end) + '</span></div>';
+}
+
+/* 「現在」是這一頁上唯一會自己動的東西，所以它要真的自己動——
+   每分鐘走一格，不是等下一次互動才跳到正確位置。
+   只換那兩處，不重畫整頁：重畫會打斷捲動、把展開的卡片收掉，
+   還會讓時刻連鎖動畫平白重播一次。
+   對齊到整分鐘，這樣線走的那一步跟畫面上的時刻是同時發生的。 */
+let nowTimer = null;
+function startNowTick() {
+  clearTimeout(nowTimer);
+  nowTimer = setTimeout(() => { paintNow(); startNowTick(); },
+                        60000 - (Date.now() % 60000) + 250);
+}
+function stopNowTick() { clearTimeout(nowTimer); nowTimer = null; }
+
+function paintNow() {
+  if (!S.trip || !S.sched || S.day !== todayIndex()) return;
+  const n = nowMin();
+  const sp = S.stripSpan;
+  const strip = $('#plate .strip');
+  if (strip && sp && sp.day === S.day && n >= sp.start && n <= sp.end && sp.end > sp.start) {
+    const left = clamp((n - sp.start) / (sp.end - sp.start) * 100, 0, 100).toFixed(2) + '%';
+    let u = $('u', strip);
+    /* 出發前打開的話一開始沒有這條線，時間走進行程區間時要自己長出來。 */
+    if (!u) { u = document.createElement('u'); strip.appendChild(u); }
+    u.style.left = left;
+  }
+  const box = $('#plate .dnow');
+  const h = nowLineHTML(S.sched, S.day);
+  if (box && h) box.outerHTML = h;
+  else if (box) box.remove();
 }
 
 function renderSync() {
@@ -3553,7 +3734,7 @@ async function boot() {
       const ti = todayIndex();
       if (ti >= 0 && ti !== S.day) { S.day = ti; S.open = null; }
     }
-    syncNow(true); render();
+    syncNow(true); render(); startNowTick();   // 背景時計時器會漂，回前景重新對齊整分鐘
   });
 
   if ('serviceWorker' in navigator) {
