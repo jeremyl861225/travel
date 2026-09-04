@@ -86,10 +86,19 @@
 
   --r:8px; --r2:5px;        /* 圓角：控制元件比卡片再小一階 */
   --step:90ms;              /* 元件級動作：兩格步進 */
-  /* 翻頁是唯一的例外，而且是幾何上的例外不是質感上的：一整張賽璐珞頁
-     轉九十度，走過的距離是其他動作的十倍以上，同一個 90ms 兩格會只剩
-     「閃一下」。給它兩倍長、三格——仍然是步進，仍然沒有緩動曲線。 */
-  --turn:180ms;
+  /* 這裡有一條界線：**是紙的東西照紙的物理走，是資料的東西用步進。**
+     時刻、狀態、面板是資料——它們沒有質量，兩格切換就是它們的真相。
+     但翻頁不是狀態切換，是一張紙被翻過去：它有厚度、會彎、會被放開之後
+     自己落下。用兩格步進去演一個實體，讀起來是畫面壞掉不是機械感。
+     所以翻頁——也只有翻頁——有曲面、有緩動、有加減速。 */
+  /* 曲線是量出來的，不是挑好看的名字。書頁的動作是「推一下 → 越過平衡點
+     → 自己落下 → 停住」，所以要有加速段。原本用了 cubic-bezier(.16,1,.3,1)
+     （文件推薦的「自信抵達」曲線），結果時間軸走到四分之一時頁面已經轉了
+     83%——紙根本來不及彎，看起來是瞬移之後再飄。
+     這條在 37ms 就開始動（點下去不會像卡住），最彎的時候整片剛好在 -33°～-59°，
+     那正是真的紙被壓住邊緣時鼓得最厲害的角度。 */
+  --turn:460ms;
+  --turn-ease:cubic-bezier(.34,.02,.18,1);
   --stagger:28ms;           /* 時刻連鎖重算時每一列的間隔 */
   --rail:44px;              /* 書口分頁鐵 */
   --bind:10px;              /* 左緣留白 */
@@ -123,8 +132,7 @@ em{font-style:normal;color:var(--ink);letter-spacing:.03em}
 button{cursor:pointer}
 a{color:inherit}
 
-/* 這個世界沒有緩動曲線。所有變化都是步進的——元件是 90ms 兩格，
-   翻頁是 180ms 三格。沒有第三種。 */
+/* 介面的變化沒有緩動曲線，一律 90ms 兩格步進。唯一走實體物理的是翻頁。 */
 .step{transition:transform var(--step) steps(2),opacity var(--step) steps(2)}
 
 /* ── 版面骨架 ───────────────────────────────────────────── */
@@ -152,40 +160,53 @@ a{color:inherit}
    往後翻：舊的那一頁沿裝訂邊翻走，新的一頁本來就在下面（.turner 動）。
    往前翻：舊的留在原地，新的一頁翻回來蓋上去（#plate 動）。
    兩邊都只有一層在轉，因為另一層是靜止的實頁。 */
+/* 拓本：翻頁時疊在活頁上的那一層。分兩種用途——
+   .turner.still 是「留在原地的舊頁」（往前翻時墊在下面），
+   .turner.curl  是「正在翻的那一張」（裡面才是上面那疊會彎的直帶）。
+   別把它叫成 .leaf——那是行程卡片的 class，撞到會把整個舞台變成一張卡片
+   （position 被改成 relative、高度歸零，整張紙就此隱形）。
+   z 序：正在翻的一定在最上面，不管它是舊頁還是新頁。 */
 .turner{
   position:absolute; left:0; top:0; bottom:0; right:var(--rail);
-  background:var(--paper); overflow:hidden; pointer-events:none;
-  transform-origin:left center; will-change:transform;
-  /* 拓本蓋在活頁上（往後翻＝舊頁在上面翻走），但往前翻的時候上下要對調：
-     新的那一頁是被翻回來蓋上去的，得壓過留在原地的舊頁。
-     只有這兩個 z-index，方向由誰拿到 .turning 決定。 */
-  z-index:2;
-  /* 翻起來的那一側要離開紙面，用一道往裝訂邊收的暗來表示，
-     不是加陰影——這個世界的層次一律靠線與明度，沒有 box-shadow。 */
-  background-image:linear-gradient(90deg, rgba(27,26,22,.10), rgba(27,26,22,0) 34%);
+  overflow:hidden; pointer-events:none; transform-style:preserve-3d;
 }
-.turner > .plate{position:absolute; left:0; top:0; width:100%; overflow:visible}
-.plate.turning{transform-origin:left center; will-change:transform; background:var(--paper); z-index:3}
+.turner.still{background:var(--paper); z-index:2}
+.turner.curl{z-index:3; background:transparent}
+.turner.still > .plate{position:absolute; left:0; top:0; width:100%; overflow:visible}
+/* 正在翻的時候真正的活頁要讓位給它的拓本，否則會看到兩份同樣的內容。 */
+.plate.turnhide{visibility:hidden}
+/* 翻起來的那一張會在下面那一頁上投影，而且隨著它離開往書脊收回去。
+   沒有這一層，兩頁看起來會像貼在同一個平面上。 */
+.turnshade{
+  position:absolute; left:0; top:0; bottom:0; right:var(--rail); z-index:2;
+  pointer-events:none; transform-origin:left center; opacity:0;
+  background:linear-gradient(90deg, rgba(27,26,22,.34), rgba(27,26,22,0) 52%);
+}
 
-/* 三格要平均分在「看得到的寬度」上，不是分在角度上。角度是線性的，投影不是：
-   帶 perspective 的時候 -12° 甚至比 0° 還寬一點（近的那一邊朝觀看者過來），
-   要到 -56° 投影寬度才掉到七成。照角度平均切三格的結果是前三分之二完全
-   看不出在動——實測 -28.7° 的投影寬度是 102%。
-   所以格子按實測的投影寬度取：100% → 70%(-56°) → 40%(-72°) → 14%(-84°)。
-   step-end 讓每一格真的停住，中間不插值——這一頁沒有中間狀態，只有三張定格。 */
-@keyframes sheetaway{
-  0%{transform:rotateY(-56deg)}
-  33%{transform:rotateY(-72deg)}
-  66%,100%{transform:rotateY(-84deg)}
+/* ── 會彎的那張紙 ──────────────────────────────────────────
+   CSS 的 transform 沒辦法把一個元素弄彎，所以把頁面切成 N 條直帶、
+   一條套一條（preserve-3d 讓旋轉逐層累加），每條各轉一點點——
+   合起來就是一段圓弧。這是 canvas 版翻書用四十條做的事，在 DOM 上
+   用五條就夠：動的時候眼睛看的是輪廓與明暗，不是折線的接縫。
+   代價是頁面內容要複製 N 份，所以只在翻頁那半秒存在，翻完立刻拆掉。 */
+.leafp{
+  position:absolute; top:0; height:100%;
+  transform-origin:left center; transform-style:preserve-3d;
+  will-change:transform;
 }
-@keyframes sheetback{
-  0%{transform:rotateY(-84deg)}
-  33%{transform:rotateY(-72deg)}
-  66%{transform:rotateY(-56deg)}
-  100%{transform:none}
+.band{
+  position:absolute; top:0; left:0; height:100%; overflow:hidden;
+  background:var(--paper); backface-visibility:hidden;
 }
-.turner.away{animation:sheetaway var(--turn) step-end both}
-.plate.turning{animation:sheetback var(--turn) step-end both}
+.band > .plate{position:absolute; top:0; width:auto; overflow:visible}
+/* 轉離光的那幾條要暗下去。層次靠明暗，不是靠 box-shadow——
+   這是整個設計裡唯一一次用到「光」，因為只有這裡有實體在轉動。
+   每條帶子內部再自己從 .86 漸到 1：整片給一個定值的話，接縫會變成
+   一道一道看得見的明暗階梯（實測 5 條時很明顯）。帶子的不透明度取它
+   **右緣**的值，左緣靠 .86 這個係數去接上一條的右緣——相鄰兩條的
+   明暗比在中段大約就是這個數，所以接縫剛好對得起來。 */
+.band > .sh{position:absolute; inset:0; pointer-events:none; opacity:0;
+  background:linear-gradient(90deg, rgba(27,26,22,.86), rgba(27,26,22,1))}
 .plate{
   position:relative; overflow-y:auto; overflow-x:hidden;
   -webkit-overflow-scrolling:touch;
@@ -738,7 +759,7 @@ let HUES = hueSet(6);                    // openTrip() 會依實際天數重算
 /* 建置代號。手機上「改了但看起來沒變」十之八九是舊快取，
    在設定裡把這個字串印出來，一眼就知道手上這份是不是新的。
    改版時跟著 sw.js 的 CACHE 一起跳號。 */
-const BUILD = '2026-09-03 · v29';
+const BUILD = '2026-09-04 · v30';
 const VERMILION = '#D62D14';
 /* 已經過去的分頁用的極淺灰。比紙略深一點點，形狀還在但退到背景去。 */
 const PAST_TAB = '#D9D6CE';
@@ -1883,48 +1904,137 @@ const railIdx = d => (d < 0 ? (S.trip ? S.trip.days : 99) : d);
 let shownDay = null, turning = false;
 const REDUCED = matchMedia('(prefers-reduced-motion: reduce)');
 
-/* 把現在這一頁原樣拓下來，疊在原處。捲動位置用位移補回去——
-   拓本不能捲動，不補的話翻走的會是頁首而不是你正在看的段落。 */
-function liftSheet() {
-  const p = $('#plate');
-  const g = document.createElement('div');
-  g.className = 'turner';
-  g.setAttribute('aria-hidden', 'true');
-  const inner = p.cloneNode(true);
-  inner.removeAttribute('id');
-  inner.style.transform = 'translateY(' + (-p.scrollTop) + 'px)';
-  g.appendChild(inner);
-  /* 當日色是 :root 上的變數，applyBoard() 馬上就要換成新那天的。
-     把現在這一組釘在拓本上（自訂屬性會往下繼承，等於遮蔽 :root），
-     翻走的那一頁才會帶著自己的顏色離開——不然它會在半空中變色。 */
+/* 當日色是 :root 上的變數，applyBoard() 隨時會換成別天的。把當下這一組
+   釘在拓本上（自訂屬性會往下繼承，等於遮蔽 :root），翻走的那一頁才會帶著
+   自己的顏色離開——不然它會在半空中變色。 */
+function freezeHue(el) {
   const cs = getComputedStyle(document.documentElement);
   ['--accent','--accent-ink','--accent-line','--accent-edge','--accent-rule','--btn','--btn-ink']
-    .forEach(k => g.style.setProperty(k, cs.getPropertyValue(k)));
-  $('.case').appendChild(g);
-  void g.offsetWidth;     // 起點要先真的生效過，否則過渡不會跑
+    .forEach(k => el.style.setProperty(k, cs.getPropertyValue(k)));
+}
+
+/* 平的那一張：往前翻時墊在下面、留在原地的舊頁。它不動，所以不必切帶。
+   捲動位置用位移補回去——拓本不能捲動，不補的話墊著的會是頁首。 */
+function buildStill(src, scrollTop) {
+  const g = document.createElement('div');
+  g.className = 'turner still';
+  g.setAttribute('aria-hidden', 'true');
+  freezeHue(g);
+  const copy = src.cloneNode(true);
+  copy.removeAttribute('id');
+  copy.style.transform = 'translateY(' + (-scrollTop) + 'px)';
+  g.appendChild(copy);
   return g;
 }
 
-function turnSheet(dir, ghost) {
-  const plate = $('#plate');
-  turning = true;
-  /* 往後翻：動的是拓本（舊頁翻走），新的一頁本來就在下面。
-     往前翻：拓本靜靜留在原地當作舊頁，動的是新的一頁（翻回來蓋上）。
-     任何一邊都只有一層在轉。 */
-  if (dir > 0) ghost.classList.add('away');
-  else plate.classList.add('turning');
+/* 會彎的那一張。CSS 沒辦法把一個元素弄彎，所以把頁面切成 LEAF_N 條直帶、
+   一條套一條：preserve-3d 讓旋轉逐層累加，每條各轉一點點，合起來是一段圓弧。
+   第 i 條要看到的是頁面的第 i 段，但它的座標原點已經被父層推到 i*w，
+   所以裡面那份拷貝要往回位移 i*w。 */
+/* 七條。五條時明暗的階梯看得出來，再多下去每一條都是一層合成層、
+   在手機上是實打實的記憶體。 */
+const LEAF_N = 7;
+function buildLeaf(src, scrollTop) {
+  const W = src.clientWidth;
+  /* 帶子的邊界取整數。W/N 是除不盡的（348/7），每條都落在半個像素上，
+     接縫會被反鋸齒抹成一道一道看得見的細線。再讓每條往右多疊 0.6px：
+     旋轉之後投影位置本來就是小數，硬碰硬一定會露縫，重疊蓋掉最省。 */
+  const edge = [];
+  for (let i = 0; i <= LEAF_N; i++) edge.push(Math.round(W * i / LEAF_N));
+  const stage = document.createElement('div');
+  stage.className = 'turner curl';
+  stage.setAttribute('aria-hidden', 'true');
+  freezeHue(stage);
+  const panels = [];
+  let host = stage;
+  for (let i = 0; i < LEAF_N; i++) {
+    const pan = document.createElement('div');
+    pan.className = 'leafp';
+    pan.style.left = (i ? edge[i] - edge[i - 1] : 0) + 'px';
+    pan.style.width = (W - edge[i]) + 'px';
+    const band = document.createElement('div');
+    band.className = 'band';
+    band.style.width = (edge[i + 1] - edge[i] + 0.6) + 'px';
+    const copy = src.cloneNode(true);
+    copy.removeAttribute('id');
+    copy.style.width = W + 'px';
+    copy.style.transform = 'translate(' + (-edge[i]) + 'px,' + (-scrollTop) + 'px)';
+    const sh = document.createElement('i');
+    sh.className = 'sh';
+    band.appendChild(copy); band.appendChild(sh);
+    pan.appendChild(band);
+    host.appendChild(pan);
+    panels.push({ el:pan, sh });
+    host = pan;
+  }
+  return { stage, panels };
+}
 
-  const ms = parseFloat(getComputedStyle(document.documentElement)
-    .getPropertyValue('--turn')) || 180;
+/* 這張紙怎麼走：
+     M(q)  整片的平均角度，0 → -102°（過了 90° 就轉出書脊之外，被書殼切掉）
+     C(q)  曲率總量，中途最彎、兩端攤平——你放開一張紙，它是先鼓起再落平的
+   每一條帶子的絕對角度是 M + C/2 - C*(i+0.5)/N，相鄰兩條差 C/N，
+   所以只有第一條要背整片的角度，其餘每條都只轉 -C/N。
+   加減速交給 effect 的 easing 去重映時間，不要自己把它烘進取樣點——
+   分開才改得動。 */
+function leafFrames(dir, n, F) {
+  const rot = Array.from({ length:n }, () => []);
+  const shd = Array.from({ length:n }, () => []);
+  for (let f = 0; f <= F; f++) {
+    const q = dir > 0 ? f / F : 1 - f / F;
+    /* q**0.85 把彎的峰值往前挪一點：紙是在你還壓著邊緣的時候最鼓，
+       放開之後一路攤平落下，不是在正中間才最彎。 */
+    const M = -102 * q, C = 46 * Math.sin(Math.PI * Math.pow(q, 0.85));
+    for (let i = 0; i < n; i++) {
+      rot[i].push({ transform: 'rotateY(' +
+        (i === 0 ? M + C / 2 - C * 0.5 / n : -C / n).toFixed(3) + 'deg)' });
+      /* 取右緣不是取中點：帶子內部已經有 .86→1 的漸層在補左半邊。 */
+      const abs = M + C / 2 - C * (i + 1) / n;
+      shd[i].push({ opacity: Math.min(.5,
+        (1 - Math.cos(abs * Math.PI / 180)) * .42).toFixed(3) });
+    }
+  }
+  return { rot, shd };
+}
+
+function turnSheet(dir, leaf, still) {
+  turning = true;
+  const cs = getComputedStyle(document.documentElement);
+  const ms = parseFloat(cs.getPropertyValue('--turn')) || 520;
+  const ease = (cs.getPropertyValue('--turn-ease') || '').trim() || 'cubic-bezier(.16,1,.3,1)';
+  const opt = { duration: ms, easing: ease, fill: 'both' };
+  const n = leaf.panels.length;
+  const { rot, shd } = leafFrames(dir, n, 14);
+
+  const shade = document.createElement('div');
+  shade.className = 'turnshade';
+  $('.case').appendChild(shade);
+  const sf = [];
+  for (let f = 0; f <= 10; f++) {
+    const q = dir > 0 ? f / 10 : 1 - f / 10;
+    sf.push({ opacity: (Math.sin(Math.PI * q) * .5).toFixed(3),
+              transform: 'scaleX(' + (1 - q * .8).toFixed(3) + ')' });
+  }
+
+  let lead = null;
+  leaf.panels.forEach((pn, i) => {
+    const a = pn.el.animate(rot[i], opt);
+    pn.sh.animate(shd[i], opt);
+    if (i === 0) lead = a;
+  });
+  shade.animate(sf, opt);
+
   const done = () => {
-    ghost.remove();
-    plate.classList.remove('turning');
+    leaf.stage.remove();
+    if (still) still.remove();
+    shade.remove();
+    $('#plate').classList.remove('turnhide');
     turning = false;
   };
-  /* animationend 為主、計時器保底：頁面在背景時動畫不會跑完，
-     沒有保底的話拓本會一直蓋在上面，回到前景就變成整頁點不動。 */
-  (dir > 0 ? ghost : plate).addEventListener('animationend', done, { once:true });
-  setTimeout(done, ms + 120);
+  /* finish 為主、計時器保底：頁面在背景時動畫不會跑完，沒有保底的話
+     拓本會一直蓋在上面，回到前景就變成整頁點不動。 */
+  if (lead) lead.addEventListener('finish', done, { once:true });
+  setTimeout(done, ms + 160);
 }
 
 function render() {
@@ -1934,7 +2044,23 @@ function render() {
      （同步回來、編輯模式、時刻重算），那些都不該翻。 */
   const dir = (shownDay != null && shownDay !== S.day && !turning && !REDUCED.matches)
     ? (railIdx(S.day) > railIdx(shownDay) ? 1 : -1) : 0;
-  const ghost = dir ? liftSheet() : null;
+  const plate = $('#plate');
+  /* 動的一定是「離開原本位置的那一張」：
+     往後翻，動的是現在這一頁（它要被翻走），所以先拓成會彎的紙；
+     往前翻，動的是即將出現的那一頁（它要蓋上來），現在這一頁只要拓成平的墊著。
+     兩種情況都只有一張在轉。 */
+  let leaf = null, still = null;
+  if (dir > 0) {
+    leaf = buildLeaf(plate, plate.scrollTop);
+    $('.case').appendChild(leaf.stage);
+    /* 先讓它動起來再去重畫下面那一頁。transform 與 opacity 的動畫跑在合成執行緒上，
+       一旦起跑就不受主執行緒阻塞——重畫十幾張卡片的那幾十毫秒因此被蓋掉，
+       而不是變成翻頁開頭的一頓。 */
+    turnSheet(1, leaf, null);
+  } else if (dir < 0) {
+    still = buildStill(plate, plate.scrollTop);
+    $('.case').appendChild(still);
+  }
   shownDay = S.day;
 
   /* 色階要跟天數綁在一起：改天數的時候整條漸層要重新分配，
@@ -1943,7 +2069,18 @@ function render() {
   $('#app').classList.toggle('edit', S.edit);
   applyBoard(hueOf(S.day));
   renderRail(); renderPlate(); renderSync();
-  if (dir) turnSheet(dir, ghost);
+
+  /* 往前翻的那一張要等新內容畫好才拓得到，而且拓完要把真的活頁藏起來，
+     否則同一份內容會出現兩次。 */
+  /* 往前翻的那一張是「即將出現的那一頁」，得等新內容畫好才拓得到，
+     所以只有這個方向沒辦法提前起跑。拓完要把真的活頁藏起來，
+     否則同一份內容會出現兩次。 */
+  if (dir < 0) {
+    leaf = buildLeaf(plate, 0);
+    $('.case').appendChild(leaf.stage);
+    plate.classList.add('turnhide');
+    turnSheet(-1, leaf, still);
+  }
 }
 
 function renderRail() {
